@@ -1,10 +1,16 @@
 import { Router, type IRouter } from "express";
 import healthRouter from "./health";
-import nvrRouter from "./nvr";
 
 const router: IRouter = Router();
 
 router.use(healthRouter);
-router.use(nvrRouter);
+
+if (process.env.ADDON_MODE === "true") {
+  const { default: nvrAddonRouter } = await import("./nvr-addon");
+  router.use(nvrAddonRouter);
+} else {
+  const { default: nvrRouter } = await import("./nvr");
+  router.use(nvrRouter);
+}
 
 export default router;
