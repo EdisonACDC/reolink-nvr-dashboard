@@ -1,11 +1,13 @@
-FROM node:24-alpine
+ARG BUILD_FROM
+FROM ${BUILD_FROM}
 
-# Install system dependencies
+# Install Node.js, npm, and PostgreSQL from Alpine
 RUN apk add --no-cache \
-    postgresql17 \
-    postgresql17-client \
+    nodejs \
+    npm \
+    postgresql \
+    postgresql-client \
     bash \
-    su-exec \
     python3 \
     make \
     g++
@@ -18,19 +20,11 @@ WORKDIR /app
 # Copy project files
 COPY . .
 
-# Remove local artifacts that shouldn't be in image
-RUN rm -rf node_modules artifacts/*/node_modules lib/*/node_modules
-
-# Install all dependencies
+# Install all dependencies and build
 RUN pnpm install --no-frozen-lockfile
-
-# Build frontend (static files)
 RUN pnpm --filter @workspace/nvr-dashboard run build
-
-# Build backend API server
 RUN pnpm --filter @workspace/api-server run build
 
-# Make startup script executable
 RUN chmod +x /app/run.sh
 
 EXPOSE 3000
