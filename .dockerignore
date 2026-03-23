@@ -4,7 +4,6 @@ attached_assets
 node_modules
 **/node_modules
 **/.turbo
-**/dist
 icon.png
 logo.png
 *.md

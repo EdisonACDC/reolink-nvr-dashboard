@@ -38,7 +38,7 @@ app.use("/api", router);
 
 // In ADDON_MODE, serve the built React frontend statically
 if (process.env.ADDON_MODE === "true") {
-  const frontendPath = path.resolve(__dirname, "../../nvr-dashboard/dist");
+  const frontendPath = path.resolve(__dirname, "../../nvr-dashboard/dist/public");
   if (fs.existsSync(frontendPath)) {
     logger.info({ frontendPath }, "Serving static frontend from addon build");
     app.use(express.static(frontendPath));
