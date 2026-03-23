@@ -1,4 +1,5 @@
 import { Switch, Route, Router as WouterRouter } from "wouter";
+import { useHashLocation } from "wouter/use-hash-location";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { Toaster } from "@/components/ui/toaster";
 import { TooltipProvider } from "@/components/ui/tooltip";
@@ -62,7 +63,7 @@ function App() {
                   <StatusBar />
                 </div>
                 <main className="flex-1 overflow-hidden relative">
-                  <WouterRouter base={import.meta.env.BASE_URL.replace(/\/$/, "")}>
+                  <WouterRouter hook={useHashLocation}>
                     <Router />
                   </WouterRouter>
                 </main>
