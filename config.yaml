@@ -1,0 +1,20 @@
+name: "Reolink NVR Dashboard"
+description: "Dashboard per NVR Reolink con live view telecamere e gestione registrazioni"
+version: "1.0.0"
+slug: "reolink_nvr_dashboard"
+init: false
+arch:
+  - aarch64
+  - amd64
+  - armhf
+  - armv7
+  - i386
+map:
+  - data:rw
+ports:
+  3000/tcp: 3000
+ports_description:
+  3000/tcp: "Web Dashboard NVR Reolink"
+panel_icon: "mdi:cctv"
+panel_title: "NVR Reolink"
+host_network: false
