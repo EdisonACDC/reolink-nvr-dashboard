@@ -1,6 +1,6 @@
 name: "Reolink NVR Dashboard"
 description: "Dashboard per NVR Reolink con live view telecamere e gestione registrazioni"
-version: "1.0.6"
+version: "1.0.7"
 slug: "reolink_nvr_dashboard"
 init: false
 arch:

@@ -1,10 +1,6 @@
-ARG BUILD_FROM
-FROM ${BUILD_FROM}
+FROM node:20-alpine
 
-# Install Node.js, PostgreSQL and su-exec
 RUN apk add --no-cache \
-    nodejs \
-    npm \
     postgresql \
     postgresql-client \
     bash \
