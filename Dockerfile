@@ -1,17 +1,17 @@
 FROM node:20-alpine
 
+# Install only what's needed at runtime - no build tools
 RUN apk add --no-cache \
-    postgresql \
-    postgresql-client \
+    postgresql17 \
+    postgresql17-client \
     bash \
-    su-exec \
     gzip
 
 WORKDIR /app
 
 COPY . .
 
-RUN chmod +x /app/run.sh
+RUN chmod a+x /app/run.sh
 
 EXPOSE 3000
 
