@@ -1,17 +1,18 @@
-FROM node:20-alpine
+ARG BUILD_FROM
+FROM ${BUILD_FROM}
 
-# Install only what's needed at runtime - no build tools
 RUN apk add --no-cache \
-    postgresql17 \
-    postgresql17-client \
-    bash \
+    postgresql \
+    postgresql-client \
+    nodejs \
+    npm \
     gzip
 
 WORKDIR /app
 
 COPY . .
 
-RUN chmod a+x /app/run.sh
+RUN chmod +x /app/run.sh
 
 EXPOSE 3000
 
