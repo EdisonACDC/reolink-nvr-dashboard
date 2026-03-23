@@ -1,0 +1,14 @@
+packages:
+  "date-fns": "For formatting dates and times in recordings and status"
+  "hls.js": "For playing HLS video streams from the NVR"
+  "@hookform/resolvers": "For form validation with Zod"
+
+images:
+  - path: "artifacts/nvr-dashboard/public/images/nvr-bg.png"
+    description: "Dark, abstract technological background resembling a data center or security monitoring grid with subtle glowing blue lines"
+    aspect_ratio: "16:9"
+
+notes:
+  - "The API provides React Query hooks in @workspace/api-client-react"
+  - "Assuming forms should use Zod for validation locally matching the OpenAPI schema requirements"
+  - "Video streams will attempt to use hls.js if the URL contains m3u8, otherwise fallback to native video"

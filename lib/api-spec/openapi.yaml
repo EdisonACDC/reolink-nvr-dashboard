@@ -1,0 +1,374 @@
+openapi: 3.1.0
+info:
+  title: Api
+  version: 0.1.0
+  description: Reolink NVR Dashboard API
+servers:
+  - url: /api
+    description: Base API path
+tags:
+  - name: health
+    description: Health operations
+  - name: nvr
+    description: NVR configuration and camera management
+  - name: stream
+    description: Video streaming
+  - name: recordings
+    description: Recording management
+paths:
+  /healthz:
+    get:
+      operationId: healthCheck
+      tags: [health]
+      summary: Health check
+      description: Returns server health status
+      responses:
+        "200":
+          description: Healthy
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/HealthStatus"
+
+  /nvr/config:
+    get:
+      operationId: getNvrConfig
+      tags: [nvr]
+      summary: Get NVR configuration
+      responses:
+        "200":
+          description: NVR configuration
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/NvrConfig"
+    put:
+      operationId: updateNvrConfig
+      tags: [nvr]
+      summary: Update NVR configuration
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/NvrConfigInput"
+      responses:
+        "200":
+          description: Updated NVR configuration
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/NvrConfig"
+
+  /nvr/cameras:
+    get:
+      operationId: getCameras
+      tags: [nvr]
+      summary: Get all cameras
+      responses:
+        "200":
+          description: List of cameras
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Camera"
+    post:
+      operationId: createCamera
+      tags: [nvr]
+      summary: Add a camera
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CameraInput"
+      responses:
+        "201":
+          description: Created camera
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Camera"
+
+  /nvr/cameras/{id}:
+    parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: integer
+    put:
+      operationId: updateCamera
+      tags: [nvr]
+      summary: Update a camera
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CameraInput"
+      responses:
+        "200":
+          description: Updated camera
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Camera"
+    delete:
+      operationId: deleteCamera
+      tags: [nvr]
+      summary: Delete a camera
+      responses:
+        "204":
+          description: Camera deleted
+
+  /nvr/cameras/{id}/snapshot:
+    parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: integer
+    get:
+      operationId: getCameraSnapshot
+      tags: [nvr]
+      summary: Get camera snapshot
+      responses:
+        "200":
+          description: Camera snapshot info
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SnapshotInfo"
+
+  /nvr/status:
+    get:
+      operationId: getNvrStatus
+      tags: [nvr]
+      summary: Get NVR system status
+      responses:
+        "200":
+          description: System status
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/NvrStatus"
+
+  /recordings:
+    get:
+      operationId: getRecordings
+      tags: [recordings]
+      summary: Get recordings list
+      parameters:
+        - name: cameraId
+          in: query
+          schema:
+            type: integer
+        - name: date
+          in: query
+          description: Date in YYYY-MM-DD format
+          schema:
+            type: string
+        - name: startTime
+          in: query
+          schema:
+            type: string
+        - name: endTime
+          in: query
+          schema:
+            type: string
+      responses:
+        "200":
+          description: List of recordings
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Recording"
+
+components:
+  schemas:
+    HealthStatus:
+      type: object
+      properties:
+        status:
+          type: string
+      required:
+        - status
+
+    NvrConfig:
+      type: object
+      properties:
+        id:
+          type: integer
+        host:
+          type: string
+        port:
+          type: integer
+        username:
+          type: string
+        rtspPort:
+          type: integer
+        httpPort:
+          type: integer
+        channelCount:
+          type: integer
+        name:
+          type: string
+        configured:
+          type: boolean
+      required:
+        - id
+        - host
+        - port
+        - username
+        - rtspPort
+        - httpPort
+        - channelCount
+        - name
+        - configured
+
+    NvrConfigInput:
+      type: object
+      properties:
+        host:
+          type: string
+        port:
+          type: integer
+        username:
+          type: string
+        password:
+          type: string
+        rtspPort:
+          type: integer
+        httpPort:
+          type: integer
+        channelCount:
+          type: integer
+        name:
+          type: string
+      required:
+        - host
+        - username
+
+    Camera:
+      type: object
+      properties:
+        id:
+          type: integer
+        channel:
+          type: integer
+        name:
+          type: string
+        status:
+          type: string
+          enum: [online, offline, unknown]
+        recordingEnabled:
+          type: boolean
+        motionDetection:
+          type: boolean
+        resolution:
+          type: string
+        nvrId:
+          type: integer
+        streamUrl:
+          type: string
+        snapshotUrl:
+          type: string
+      required:
+        - id
+        - channel
+        - name
+        - status
+        - recordingEnabled
+        - motionDetection
+        - nvrId
+
+    CameraInput:
+      type: object
+      properties:
+        channel:
+          type: integer
+        name:
+          type: string
+        recordingEnabled:
+          type: boolean
+        motionDetection:
+          type: boolean
+      required:
+        - channel
+        - name
+
+    SnapshotInfo:
+      type: object
+      properties:
+        cameraId:
+          type: integer
+        url:
+          type: string
+        timestamp:
+          type: string
+      required:
+        - cameraId
+        - timestamp
+
+    NvrStatus:
+      type: object
+      properties:
+        connected:
+          type: boolean
+        diskUsage:
+          type: number
+        diskTotal:
+          type: number
+        uptime:
+          type: string
+        temperature:
+          type: number
+        camerasOnline:
+          type: integer
+        camerasTotal:
+          type: integer
+        recordingActive:
+          type: boolean
+      required:
+        - connected
+        - diskUsage
+        - diskTotal
+        - camerasOnline
+        - camerasTotal
+        - recordingActive
+
+    Recording:
+      type: object
+      properties:
+        id:
+          type: integer
+        cameraId:
+          type: integer
+        cameraName:
+          type: string
+        startTime:
+          type: string
+        endTime:
+          type: string
+        duration:
+          type: integer
+        fileSize:
+          type: integer
+        type:
+          type: string
+          enum: [continuous, motion, manual]
+        playbackUrl:
+          type: string
+      required:
+        - id
+        - cameraId
+        - cameraName
+        - startTime
+        - endTime
+        - duration
+        - type
