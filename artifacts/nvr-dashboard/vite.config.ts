@@ -51,7 +51,16 @@ export default defineConfig({
       "@": path.resolve(import.meta.dirname, "src"),
       "@assets": path.resolve(import.meta.dirname, "..", "..", "attached_assets"),
     },
-    dedupe: ["react", "react-dom"],
+    // IMPORTANT: dedupe React Query too. La lib @workspace/api-client-react
+    // dichiara la sua copia di @tanstack/react-query e, senza dedupe, nel bundle
+    // finiscono DUE istanze con context distinti: il QueryClientProvider (copia
+    // dell'app) e gli hook come useGetCameras (copia della lib) non condividono
+    // lo stesso context -> errore "No QueryClient set" e schermata nera.
+    dedupe: [
+      "react",
+      "react-dom",
+      "@tanstack/react-query",
+    ],
   },
   root: path.resolve(import.meta.dirname),
   build: {
