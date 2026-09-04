@@ -20,7 +20,10 @@ import {
   Plus,
   Trash2,
   Edit2,
-  Camera as CameraIcon
+  Camera as CameraIcon,
+  RefreshCw,
+  Wifi,
+  WifiOff
 } from "lucide-react"
 import { useQueryClient } from "@tanstack/react-query"
 
@@ -71,6 +74,8 @@ export default function Settings() {
   const [activeTab, setActiveTab] = useState("nvr")
   const [cameraDialogOpen, setCameraDialogOpen] = useState(false)
   const [editingCamera, setEditingCamera] = useState<Camera | null>(null)
+  const [syncing, setSyncing] = useState(false)
+  const [syncResult, setSyncResult] = useState<{ online: boolean; camerasCount: number } | null>(null)
 
   // Forms
   const nvrForm = useForm<z.infer<typeof nvrConfigSchema>>({
@@ -100,13 +105,37 @@ export default function Settings() {
   const onNvrSubmit = (values: z.infer<typeof nvrConfigSchema>) => {
     updateNvr.mutate({ data: values }, {
       onSuccess: () => {
-        toast({ title: "NVR Configuration saved successfully" })
+        toast({ title: "Configurazione salvata — sincronizzazione telecamere in corso..." })
         queryClient.invalidateQueries({ queryKey: ['/api/nvr/config'] })
+        // Auto-trigger sync after a short delay (backend does it too, but let's refresh the UI)
+        setTimeout(() => {
+          queryClient.invalidateQueries({ queryKey: ['/api/nvr/cameras'] })
+        }, 3000)
       },
       onError: (err: any) => {
-        toast({ title: "Failed to save configuration", description: err.message, variant: "destructive" })
+        toast({ title: "Errore nel salvataggio", description: err.message, variant: "destructive" })
       }
     })
+  }
+
+  const handleSync = async () => {
+    setSyncing(true)
+    setSyncResult(null)
+    try {
+      const resp = await fetch('./api/nvr/sync', { method: 'POST' })
+      const data = await resp.json()
+      setSyncResult({ online: data.online, camerasCount: data.camerasCount })
+      queryClient.invalidateQueries({ queryKey: ['/api/nvr/cameras'] })
+      if (data.online) {
+        toast({ title: `NVR connesso ✓ — ${data.camerasCount} telecamere sincronizzate` })
+      } else {
+        toast({ title: "NVR non raggiungibile", description: "Controlla IP, porta API e credenziali.", variant: "destructive" })
+      }
+    } catch (err: any) {
+      toast({ title: "Errore di sincronizzazione", description: err.message, variant: "destructive" })
+    } finally {
+      setSyncing(false)
+    }
   }
 
   const openCameraDialog = (cam?: Camera) => {
@@ -271,9 +300,26 @@ export default function Settings() {
                         </div>
                       </div>
 
-                      <div className="flex justify-end pt-4">
-                        <Button type="submit" disabled={updateNvr.isPending} className="w-full md:w-auto shadow-md shadow-primary/20">
-                          {updateNvr.isPending ? "Saving..." : <><Save className="w-4 h-4 mr-2" /> Save Configuration</>}
+                      <div className="flex flex-col sm:flex-row justify-end gap-3 pt-4">
+                        <Button
+                          type="button"
+                          variant="outline"
+                          disabled={syncing}
+                          onClick={handleSync}
+                          className="w-full sm:w-auto border-primary/30 text-primary hover:bg-primary/10"
+                        >
+                          {syncing ? (
+                            <><RefreshCw className="w-4 h-4 mr-2 animate-spin" /> Connessione in corso...</>
+                          ) : syncResult !== null ? (
+                            syncResult.online
+                              ? <><Wifi className="w-4 h-4 mr-2 text-green-500" /> NVR connesso ✓</>
+                              : <><WifiOff className="w-4 h-4 mr-2 text-red-500" /> Non raggiungibile</>
+                          ) : (
+                            <><RefreshCw className="w-4 h-4 mr-2" /> Testa connessione e sincronizza</>
+                          )}
+                        </Button>
+                        <Button type="submit" disabled={updateNvr.isPending} className="w-full sm:w-auto shadow-md shadow-primary/20">
+                          {updateNvr.isPending ? "Salvataggio..." : <><Save className="w-4 h-4 mr-2" /> Salva configurazione</>}
                         </Button>
                       </div>
                     </form>

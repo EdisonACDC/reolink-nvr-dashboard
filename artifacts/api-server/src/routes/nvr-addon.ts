@@ -19,6 +19,83 @@ import {
 
 const router: IRouter = Router();
 
+// ---------------------------------------------------------------------------
+// Reolink NVR HTTP API helpers
+// ---------------------------------------------------------------------------
+
+/**
+ * Try to authenticate with the Reolink NVR HTTP API.
+ * Returns true if the NVR responded with a valid login token.
+ */
+async function reolinkLogin(
+  host: string,
+  port: number,
+  username: string,
+  password: string,
+): Promise<boolean> {
+  if (!host) return false;
+  try {
+    const url = `http://${host}:${port}/api.cgi?cmd=Login`;
+    const body = JSON.stringify([
+      { cmd: "Login", action: 0, param: { User: { userName: username, password } } },
+    ]);
+    const resp = await fetch(url, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body,
+      signal: AbortSignal.timeout(7000),
+    });
+    if (!resp.ok) return false;
+    const data = (await resp.json()) as any[];
+    return Array.isArray(data) && data[0]?.code === 0;
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * Ensure cameras for each NVR channel exist in the store and set their status.
+ * Creates missing cameras and updates existing ones.
+ */
+function autoSyncCameras(
+  config: { id: number; channelCount: number; nvrId?: number },
+  online: boolean,
+): void {
+  const existing = jsonStore.getCameras(config.id);
+  const count = Math.max(1, config.channelCount || 4);
+  const status = online ? "online" : "offline";
+  for (let ch = 1; ch <= count; ch++) {
+    const cam = existing.find((c) => c.channel === ch);
+    if (!cam) {
+      jsonStore.createCamera({
+        nvrId: config.id,
+        channel: ch,
+        name: `Camera CH${ch}`,
+        status,
+        recordingEnabled: true,
+        motionDetection: true,
+        resolution: null,
+      });
+    } else {
+      jsonStore.updateCamera(cam.id, { status });
+    }
+  }
+}
+
+/**
+ * Background polling — re-checks NVR connectivity every 30 s and updates camera statuses.
+ */
+setInterval(async () => {
+  try {
+    const config = jsonStore.getNvrConfig();
+    if (!config || !config.host || !config.configured) return;
+    const online = await reolinkLogin(config.host, config.port, config.username, config.password);
+    autoSyncCameras(config, online);
+  } catch {
+    // ignore
+  }
+}, 30_000);
+
 function getOrCreateNvrConfig() {
   const existing = jsonStore.getNvrConfig();
   if (existing) return existing;
@@ -89,6 +166,12 @@ router.put("/nvr/config", (req, res): void => {
     name: updated.name,
     configured: updated.configured,
   }));
+
+  // Non-blocking: attempt Reolink login and auto-create/update camera records
+  const pwd = parsed.data.password ?? existing.password ?? "";
+  reolinkLogin(updated.host, updated.port, updated.username, pwd)
+    .then((online) => autoSyncCameras(updated, online))
+    .catch(() => {});
 });
 
 router.get("/nvr/cameras", (req, res): void => {
@@ -202,6 +285,18 @@ router.get("/nvr/status", (req, res): void => {
     camerasTotal: cameras.length,
     recordingActive: cameras.some((c) => c.recordingEnabled),
   }));
+});
+
+// Manual camera sync / connection test endpoint
+router.post("/nvr/sync", async (req, res): Promise<void> => {
+  const config = getOrCreateNvrConfig();
+  if (!config.host) {
+    res.status(400).json({ error: "NVR not configured — set host and credentials first" });
+    return;
+  }
+  const online = await reolinkLogin(config.host, config.port, config.username, config.password);
+  autoSyncCameras(config, online);
+  res.json({ success: true, online, camerasCount: config.channelCount });
 });
 
 router.get("/recordings", (req, res): void => {
