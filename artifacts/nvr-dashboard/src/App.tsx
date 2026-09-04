@@ -62,7 +62,7 @@ function App() {
                   </div>
                   <StatusBar />
                 </div>
-                <main className="flex-1 overflow-hidden relative">
+                <main className="flex-1 overflow-auto relative">
                   <WouterRouter hook={useHashLocation}>
                     <Router />
                   </WouterRouter>

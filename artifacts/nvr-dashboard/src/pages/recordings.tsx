@@ -51,7 +51,7 @@ export default function Recordings() {
   }
 
   return (
-    <div className="flex flex-col h-full bg-background p-4 md:p-6 overflow-hidden">
+    <div className="flex flex-col bg-background p-4 md:p-6 pb-24 min-h-full">
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 mb-6">
         <div>
           <h1 className="text-2xl font-bold tracking-tight text-foreground">Recordings</h1>

@@ -159,7 +159,7 @@ export default function Settings() {
   }
 
   return (
-    <div className="flex flex-col h-full bg-background p-4 md:p-6 overflow-hidden">
+    <div className="flex flex-col bg-background p-4 md:p-6 pb-24">
       <div className="mb-6">
         <h1 className="text-2xl font-bold tracking-tight text-foreground flex items-center gap-2">
           <Settings2 className="w-6 h-6 text-primary" /> Configuration
@@ -167,7 +167,7 @@ export default function Settings() {
         <p className="text-sm text-muted-foreground mt-1">Manage NVR connection and camera settings</p>
       </div>
 
-      <Tabs value={activeTab} onValueChange={setActiveTab} className="flex-1 flex flex-col">
+      <Tabs value={activeTab} onValueChange={setActiveTab}>
         <TabsList className="w-full max-w-md grid grid-cols-2 mb-6 bg-card border border-border/50 p-1">
           <TabsTrigger value="nvr" className="data-[state=active]:bg-primary/20 data-[state=active]:text-primary">
             <Server className="w-4 h-4 mr-2" /> NVR System
@@ -177,7 +177,7 @@ export default function Settings() {
           </TabsTrigger>
         </TabsList>
 
-        <div className="flex-1 overflow-auto pb-8">
+        <div>
           <TabsContent value="nvr" className="mt-0">
             <Card className="border-border/50 shadow-lg shadow-black/5 bg-card max-w-3xl">
               <CardHeader className="border-b border-border/50 bg-muted/10">
