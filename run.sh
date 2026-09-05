@@ -1,6 +1,6 @@
 #!/bin/sh
 
-echo "[NVR] Starting Reolink NVR Dashboard v1.1.9..."
+echo "[NVR] Starting Reolink NVR Dashboard v1.2.0..."
 
 # Decompress pre-built server bundle if needed
 if [ -f /app/artifacts/api-server/dist/index.mjs.gz ] && [ ! -f /app/artifacts/api-server/dist/index.mjs ]; then

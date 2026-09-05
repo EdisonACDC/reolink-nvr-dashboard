@@ -1,5 +1,6 @@
 import { Router, type IRouter } from "express";
 import { jsonStore } from "../store/json-store";
+import { logger } from "../lib/logger";
 import {
   GetNvrConfigResponse,
   UpdateNvrConfigBody,
@@ -23,17 +24,25 @@ const router: IRouter = Router();
 // Reolink NVR HTTP API helpers
 // ---------------------------------------------------------------------------
 
+export interface ReolinkLoginResult {
+  online: boolean;
+  /** Human-readable (Italian) reason describing the outcome — always set. */
+  reason: string;
+}
+
 /**
  * Try to authenticate with the Reolink NVR HTTP API.
- * Returns true if the NVR responded with a valid login token.
+ * Returns a diagnostic result: whether the NVR responded with a valid login
+ * token, plus a human-readable reason so failures are observable in the log
+ * and in the UI (network unreachable vs. wrong credentials).
  */
 async function reolinkLogin(
   host: string,
   port: number,
   username: string,
   password: string,
-): Promise<boolean> {
-  if (!host) return false;
+): Promise<ReolinkLoginResult> {
+  if (!host) return { online: false, reason: "NVR non configurato (host mancante)" };
   // Reolink devices expose their HTTP API at /cgi-bin/api.cgi. When the API
   // port is 443 we must use HTTPS (self-signed cert — reject unauthorized off).
   const scheme = port === 443 ? "https" : "http";
@@ -48,11 +57,56 @@ async function reolinkLogin(
       body,
       signal: AbortSignal.timeout(7000),
     });
-    if (!resp.ok) return false;
-    const data = (await resp.json()) as any[];
-    return Array.isArray(data) && data[0]?.code === 0 && !!data[0]?.value?.Token;
-  } catch {
-    return false;
+    if (!resp.ok) {
+      const reason = `Il NVR ha risposto con HTTP ${resp.status} sulla porta ${port}. Verifica la porta API/HTTP.`;
+      logger.warn({ host, port, status: resp.status }, "reolinkLogin: HTTP non OK");
+      return { online: false, reason };
+    }
+    let data: any[];
+    try {
+      data = (await resp.json()) as any[];
+    } catch {
+      const reason = `Risposta non valida dal NVR sulla porta ${port} (non è un dispositivo Reolink API?).`;
+      logger.warn({ host, port }, "reolinkLogin: risposta non JSON");
+      return { online: false, reason };
+    }
+    const entry = Array.isArray(data) ? data[0] : undefined;
+    if (entry?.code === 0 && entry?.value?.Token) {
+      logger.info({ host, port, username }, "reolinkLogin: autenticazione riuscita");
+      return { online: true, reason: "Connesso al NVR" };
+    }
+    // Reolink returns an error object with a detail string when login fails
+    const detail: string = entry?.error?.detail || entry?.error?.rspCode || "credenziali rifiutate";
+    const reason = `Login rifiutato dal NVR: ${detail}. Usa l'utente LOCALE del NVR (es. "admin"), non l'email dell'account Reolink Cloud.`;
+    logger.warn({ host, port, username, detail }, "reolinkLogin: login rifiutato");
+    return { online: false, reason };
+  } catch (err: any) {
+    const code = err?.cause?.code || err?.code || err?.name || "";
+    const isTimeout = code === "TimeoutError" || /timeout|aborted/i.test(err?.message || "");
+    let reason: string;
+    if (isTimeout) {
+      logger.warn({ host, port, code }, "reolinkLogin: timeout");
+      return {
+        online: false,
+        reason: `Timeout: nessuna risposta da ${host}:${port} entro 7s. Il NVR non è raggiungibile dalla rete dell'add-on (verifica IP/porta e che l'add-on possa raggiungere la LAN).`,
+      };
+    }
+    switch (code) {
+      case "ECONNREFUSED":
+        reason = `Connessione rifiutata su ${host}:${port}. Porta chiusa o servizio non attivo su quella porta.`;
+        break;
+      case "EHOSTUNREACH":
+      case "ENETUNREACH":
+        reason = `Host non raggiungibile (${host}). L'add-on non riesce a raggiungere la rete locale del NVR.`;
+        break;
+      case "ENOTFOUND":
+        reason = `Indirizzo non trovato (${host}). Verifica l'IP del NVR.`;
+        break;
+      default:
+        reason = `Errore di rete verso ${host}:${port}: ${err?.message || code || "sconosciuto"}.`;
+    }
+    logger.warn({ host, port, code, msg: err?.message }, "reolinkLogin: errore di rete");
+    return { online: false, reason };
   }
 }
 
@@ -92,7 +146,7 @@ setInterval(async () => {
   try {
     const config = jsonStore.getNvrConfig();
     if (!config || !config.host || !config.configured) return;
-    const online = await reolinkLogin(config.host, config.port, config.username, config.password);
+    const { online } = await reolinkLogin(config.host, config.port, config.username, config.password);
     autoSyncCameras(config, online);
   } catch {
     // ignore
@@ -173,7 +227,7 @@ router.put("/nvr/config", (req, res): void => {
   // Non-blocking: attempt Reolink login and auto-create/update camera records
   const pwd = parsed.data.password ?? existing.password ?? "";
   reolinkLogin(updated.host, updated.port, updated.username, pwd)
-    .then((online) => autoSyncCameras(updated, online))
+    .then(({ online }) => autoSyncCameras(updated, online))
     .catch(() => {});
 });
 
@@ -297,9 +351,15 @@ router.post("/nvr/sync", async (req, res): Promise<void> => {
     res.status(400).json({ error: "NVR not configured — set host and credentials first" });
     return;
   }
-  const online = await reolinkLogin(config.host, config.port, config.username, config.password);
+  const { online, reason } = await reolinkLogin(
+    config.host,
+    config.port,
+    config.username,
+    config.password,
+  );
   autoSyncCameras(config, online);
-  res.json({ success: true, online, camerasCount: config.channelCount });
+  logger.info({ host: config.host, port: config.port, online, reason }, "nvr/sync eseguito");
+  res.json({ success: true, online, reason, camerasCount: config.channelCount });
 });
 
 router.get("/recordings", (req, res): void => {

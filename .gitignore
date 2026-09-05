@@ -1,0 +1,16 @@
+# Dependencies
+node_modules/
+.pnpm-store/
+
+# Build source maps
+*.map
+
+# Environment / local data
+.env
+.env.*
+/data/
+*.local
+
+# Editor / OS
+.DS_Store
+.abacus.donotdelete
