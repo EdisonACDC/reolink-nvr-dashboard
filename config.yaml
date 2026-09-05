@@ -1,6 +1,6 @@
 name: "Reolink NVR Dashboard"
 description: "Dashboard per NVR Reolink con live view telecamere e gestione registrazioni"
-version: "1.2.0"
+version: "1.2.1"
 slug: "reolink_nvr2"
 init: false
 arch:
@@ -13,5 +13,6 @@ ingress: true
 ingress_port: 3000
 panel_icon: mdi:cctv
 homeassistant_api: false
+host_network: true
 map:
   - data:rw
