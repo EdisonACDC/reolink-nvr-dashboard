@@ -24,7 +24,8 @@ import {
   Camera as CameraIcon,
   RefreshCw,
   Wifi,
-  WifiOff
+  WifiOff,
+  RotateCcw
 } from "lucide-react"
 import { useQueryClient } from "@tanstack/react-query"
 
@@ -77,6 +78,7 @@ export default function Settings() {
   const [editingCamera, setEditingCamera] = useState<Camera | null>(null)
   const [syncing, setSyncing] = useState(false)
   const [syncResult, setSyncResult] = useState<{ online: boolean; camerasCount: number } | null>(null)
+  const [resetting, setResetting] = useState(false)
 
   // Forms
   const nvrForm = useForm<z.infer<typeof nvrConfigSchema>>({
@@ -144,6 +146,31 @@ export default function Settings() {
       toast({ title: "Errore di sincronizzazione", description: err?.message ?? "Errore sconosciuto", variant: "destructive" })
     } finally {
       setSyncing(false)
+    }
+  }
+
+  const handleReset = async () => {
+    setResetting(true)
+    try {
+      await customFetch('/api/nvr/config', { method: 'DELETE', responseType: 'json' })
+      setSyncResult(null)
+      queryClient.invalidateQueries({ queryKey: ['/api/nvr/config'] })
+      queryClient.invalidateQueries({ queryKey: ['/api/nvr/cameras'] })
+      nvrForm.reset({
+        name: "My NVR",
+        host: "",
+        port: 80,
+        username: "admin",
+        password: "",
+        rtspPort: 554,
+        httpPort: 80,
+        channelCount: 4,
+      })
+      toast({ title: "Configurazione azzerata", description: "Inserisci le nuove credenziali e salva." })
+    } catch (err: any) {
+      toast({ title: "Errore nel reset", description: err?.message ?? "Errore sconosciuto", variant: "destructive" })
+    } finally {
+      setResetting(false)
     }
   }
 
@@ -309,27 +336,39 @@ export default function Settings() {
                         </div>
                       </div>
 
-                      <div className="flex flex-col sm:flex-row justify-end gap-3 pt-4">
+                      <div className="flex flex-col sm:flex-row justify-between gap-3 pt-4">
                         <Button
                           type="button"
-                          variant="outline"
-                          disabled={syncing}
-                          onClick={handleSync}
-                          className="w-full sm:w-auto border-primary/30 text-primary hover:bg-primary/10"
+                          variant="destructive"
+                          disabled={resetting}
+                          onClick={handleReset}
+                          className="w-full sm:w-auto"
                         >
-                          {syncing ? (
-                            <><RefreshCw className="w-4 h-4 mr-2 animate-spin" /> Connessione in corso...</>
-                          ) : syncResult !== null ? (
-                            syncResult.online
-                              ? <><Wifi className="w-4 h-4 mr-2 text-green-500" /> NVR connesso ✓</>
-                              : <><WifiOff className="w-4 h-4 mr-2 text-red-500" /> Non raggiungibile</>
-                          ) : (
-                            <><RefreshCw className="w-4 h-4 mr-2" /> Testa connessione e sincronizza</>
-                          )}
+                          <RotateCcw className={`w-4 h-4 mr-2 ${resetting ? 'animate-spin' : ''}`} />
+                          {resetting ? "Reset..." : "Reset credenziali"}
                         </Button>
-                        <Button type="submit" disabled={updateNvr.isPending} className="w-full sm:w-auto shadow-md shadow-primary/20">
-                          {updateNvr.isPending ? "Salvataggio..." : <><Save className="w-4 h-4 mr-2" /> Salva configurazione</>}
-                        </Button>
+                        <div className="flex flex-col sm:flex-row gap-3">
+                          <Button
+                            type="button"
+                            variant="outline"
+                            disabled={syncing}
+                            onClick={handleSync}
+                            className="w-full sm:w-auto border-primary/30 text-primary hover:bg-primary/10"
+                          >
+                            {syncing ? (
+                              <><RefreshCw className="w-4 h-4 mr-2 animate-spin" /> Connessione in corso...</>
+                            ) : syncResult !== null ? (
+                              syncResult.online
+                                ? <><Wifi className="w-4 h-4 mr-2 text-green-500" /> NVR connesso ✓</>
+                                : <><WifiOff className="w-4 h-4 mr-2 text-red-500" /> Non raggiungibile</>
+                            ) : (
+                              <><RefreshCw className="w-4 h-4 mr-2" /> Sincronizza telecamere</>
+                            )}
+                          </Button>
+                          <Button type="submit" disabled={updateNvr.isPending} className="w-full sm:w-auto shadow-md shadow-primary/20">
+                            {updateNvr.isPending ? "Salvataggio..." : <><Save className="w-4 h-4 mr-2" /> Salva configurazione</>}
+                          </Button>
+                        </div>
                       </div>
                     </form>
                   </Form>

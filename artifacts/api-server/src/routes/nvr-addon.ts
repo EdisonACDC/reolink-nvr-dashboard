@@ -231,6 +231,32 @@ router.put("/nvr/config", (req, res): void => {
     .catch(() => {});
 });
 
+// ---------- Reset NVR config (clear credentials) ----------
+router.delete("/nvr/config", (req, res): void => {
+  const existing = jsonStore.getNvrConfig();
+  if (existing) {
+    // Delete all cameras first
+    const cameras = jsonStore.getCameras(existing.id);
+    for (const cam of cameras) {
+      jsonStore.deleteCamera(cam.id);
+    }
+    // Reset config to defaults
+    jsonStore.updateNvrConfig(existing.id, {
+      name: "My NVR",
+      host: "",
+      port: 80,
+      username: "admin",
+      password: "",
+      rtspPort: 554,
+      httpPort: 80,
+      channelCount: 4,
+      configured: false,
+    });
+    logger.info("NVR config reset to defaults");
+  }
+  res.json({ ok: true });
+});
+
 router.get("/nvr/cameras", (req, res): void => {
   const config = getOrCreateNvrConfig();
   const cameras = jsonStore.getCameras(config.id);
