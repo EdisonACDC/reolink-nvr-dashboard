@@ -1690,10 +1690,17 @@ var require_delete_log_property = __commonJS({
   }
 });
 
-// ../../node_modules/.pnpm/fast-copy@4.0.2/node_modules/fast-copy/dist/cjs/index.cjs
+// ../../node_modules/.pnpm/fast-copy@4.1.1/node_modules/fast-copy/dist/cjs/index.cjs
 var require_cjs = __commonJS({
-  "../../node_modules/.pnpm/fast-copy@4.0.2/node_modules/fast-copy/dist/cjs/index.cjs"(exports) {
+  "../../node_modules/.pnpm/fast-copy@4.1.1/node_modules/fast-copy/dist/cjs/index.cjs"(exports) {
     "use strict";
+    var MaxDepthExceededError = class extends RangeError {
+      constructor(maxDepth) {
+        super(`Maximum copy depth of ${String(maxDepth)} exceeded; the value copied is nested too deeply.`);
+        this.maxDepth = maxDepth;
+        this.name = "MaxDepthExceededError";
+      }
+    };
     var toStringFunction = Function.prototype.toString;
     var toStringObject = Object.prototype.toString;
     function getCleanClone(prototype) {
@@ -1720,7 +1727,8 @@ var require_cjs = __commonJS({
       const type = toStringObject.call(value);
       return type.substring(8, type.length - 1);
     }
-    var { hasOwnProperty, propertyIsEnumerable } = Object.prototype;
+    var { propertyIsEnumerable } = Object.prototype;
+    var sliceTypedArray = Object.getPrototypeOf(Int8Array.prototype).slice;
     function copyOwnDescriptor(original, clone, property, state) {
       const ownDescriptor = Object.getOwnPropertyDescriptor(original, property) || {
         configurable: true,
@@ -1741,13 +1749,11 @@ var require_cjs = __commonJS({
       }
     }
     function copyOwnPropertiesStrict(value, clone, state) {
-      const names = Object.getOwnPropertyNames(value);
-      for (let index = 0; index < names.length; ++index) {
-        copyOwnDescriptor(value, clone, names[index], state);
+      for (const name of Object.getOwnPropertyNames(value)) {
+        copyOwnDescriptor(value, clone, name, state);
       }
-      const symbols = Object.getOwnPropertySymbols(value);
-      for (let index = 0; index < symbols.length; ++index) {
-        copyOwnDescriptor(value, clone, symbols[index], state);
+      for (const symbol of Object.getOwnPropertySymbols(value)) {
+        copyOwnDescriptor(value, clone, symbol, state);
       }
       return clone;
     }
@@ -1765,7 +1771,7 @@ var require_cjs = __commonJS({
       return copyOwnPropertiesStrict(array, clone, state);
     }
     function copyArrayBuffer(arrayBuffer, _state) {
-      return arrayBuffer.slice(0);
+      return ArrayBuffer.isView(arrayBuffer) ? sliceTypedArray.call(arrayBuffer, 0) : arrayBuffer.slice(0);
     }
     function copyBlob(blob, _state) {
       return blob.slice(0, blob.size, blob.type);
@@ -1779,9 +1785,9 @@ var require_cjs = __commonJS({
     function copyMapLoose(map, state) {
       const clone = new state.Constructor();
       state.cache.set(map, clone);
-      map.forEach((value, key) => {
+      for (const [key, value] of map) {
         clone.set(key, state.copier(value, state));
-      });
+      }
       return clone;
     }
     function copyMapStrict(map, state) {
@@ -1790,14 +1796,10 @@ var require_cjs = __commonJS({
     function copyObjectLoose(object, state) {
       const clone = getCleanClone(state.prototype);
       state.cache.set(object, clone);
-      for (const key in object) {
-        if (hasOwnProperty.call(object, key)) {
-          clone[key] = state.copier(object[key], state);
-        }
+      for (const key of Object.keys(object)) {
+        clone[key] = state.copier(object[key], state);
       }
-      const symbols = Object.getOwnPropertySymbols(object);
-      for (let index = 0; index < symbols.length; ++index) {
-        const symbol = symbols[index];
+      for (const symbol of Object.getOwnPropertySymbols(object)) {
         if (propertyIsEnumerable.call(object, symbol)) {
           clone[symbol] = state.copier(object[symbol], state);
         }
@@ -1823,18 +1825,19 @@ var require_cjs = __commonJS({
     function copySetLoose(set, state) {
       const clone = new state.Constructor();
       state.cache.set(set, clone);
-      set.forEach((value) => {
+      for (const value of set) {
         clone.add(state.copier(value, state));
-      });
+      }
       return clone;
     }
     function copySetStrict(set, state) {
       return copyOwnPropertiesStrict(set, copySetLoose(set, state), state);
     }
+    var DEFAULT_MAX_DEPTH = 1e3;
     function createDefaultCache() {
       return /* @__PURE__ */ new WeakMap();
     }
-    function getOptions({ createCache: createCacheOverride, methods: methodsOverride, strict }) {
+    function getOptions({ createCache: createCacheOverride, maxDepth, methods: methodsOverride, strict }) {
       const defaultMethods = {
         array: strict ? copyArrayStrict : copyArrayLoose,
         arrayBuffer: copyArrayBuffer,
@@ -1855,14 +1858,22 @@ var require_cjs = __commonJS({
       if (!copiers.Object || !copiers.Array) {
         throw new Error("An object and array copier must be provided.");
       }
-      return { createCache, copiers, methods, strict: Boolean(strict) };
+      return {
+        createCache,
+        copiers,
+        maxDepth: maxDepth == null ? DEFAULT_MAX_DEPTH : maxDepth,
+        methods,
+        strict: Boolean(strict)
+      };
     }
     function getTagSpecificCopiers(methods) {
-      return {
+      return Object.assign(/* @__PURE__ */ Object.create(null), {
         Arguments: methods.object,
         Array: methods.array,
         ArrayBuffer: methods.arrayBuffer,
         AsyncGenerator: methods.asyncGenerator,
+        BigInt64Array: methods.arrayBuffer,
+        BigUint64Array: methods.arrayBuffer,
         Blob: methods.blob,
         Boolean: copyPrimitiveWrapper,
         DataView: methods.dataView,
@@ -1886,12 +1897,11 @@ var require_cjs = __commonJS({
         Uint8Array: methods.arrayBuffer,
         Uint8ClampedArray: methods.arrayBuffer,
         Uint16Array: methods.arrayBuffer,
-        Uint32Array: methods.arrayBuffer,
-        Uint64Array: methods.arrayBuffer
-      };
+        Uint32Array: methods.arrayBuffer
+      });
     }
     function createCopier(options = {}) {
-      const { createCache, copiers } = getOptions(options);
+      const { createCache, copiers, maxDepth } = getOptions(options);
       const { Array: copyArray, Object: copyObject } = copiers;
       function copier(value, state) {
         state.prototype = state.Constructor = void 0;
@@ -1901,31 +1911,40 @@ var require_cjs = __commonJS({
         if (state.cache.has(value)) {
           return state.cache.get(value);
         }
+        if (++state.depth > maxDepth) {
+          throw new MaxDepthExceededError(maxDepth);
+        }
         state.prototype = Object.getPrototypeOf(value);
         state.Constructor = state.prototype && state.prototype.constructor;
+        let clone;
         if (!state.Constructor || state.Constructor === Object) {
-          return copyObject(value, state);
+          clone = copyObject(value, state);
+        } else if (Array.isArray(value)) {
+          clone = copyArray(value, state);
+        } else {
+          const tagSpecificCopier = copiers[getTag(value)];
+          if (tagSpecificCopier) {
+            clone = tagSpecificCopier(value, state);
+          } else {
+            clone = typeof value.then === "function" ? value : copyObject(value, state);
+          }
         }
-        if (Array.isArray(value)) {
-          return copyArray(value, state);
-        }
-        const tagSpecificCopier = copiers[getTag(value)];
-        if (tagSpecificCopier) {
-          return tagSpecificCopier(value, state);
-        }
-        return typeof value.then === "function" ? value : copyObject(value, state);
+        --state.depth;
+        return clone;
       }
       return function copy2(value) {
         return copier(value, {
           Constructor: void 0,
           cache: createCache(),
           copier,
+          depth: 0,
           prototype: void 0
         });
       };
     }
     var copyStrict = createCopier({ strict: true });
     var copy = createCopier();
+    exports.MaxDepthExceededError = MaxDepthExceededError;
     exports.copy = copy;
     exports.copyStrict = copyStrict;
     exports.createCopier = createCopier;

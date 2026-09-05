@@ -34,11 +34,14 @@ async function reolinkLogin(
   password: string,
 ): Promise<boolean> {
   if (!host) return false;
+  // Reolink devices expose their HTTP API at /cgi-bin/api.cgi. When the API
+  // port is 443 we must use HTTPS (self-signed cert — reject unauthorized off).
+  const scheme = port === 443 ? "https" : "http";
+  const url = `${scheme}://${host}:${port}/cgi-bin/api.cgi?cmd=Login`;
+  const body = JSON.stringify([
+    { cmd: "Login", action: 0, param: { User: { userName: username, password } } },
+  ]);
   try {
-    const url = `http://${host}:${port}/api.cgi?cmd=Login`;
-    const body = JSON.stringify([
-      { cmd: "Login", action: 0, param: { User: { userName: username, password } } },
-    ]);
     const resp = await fetch(url, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -47,7 +50,7 @@ async function reolinkLogin(
     });
     if (!resp.ok) return false;
     const data = (await resp.json()) as any[];
-    return Array.isArray(data) && data[0]?.code === 0;
+    return Array.isArray(data) && data[0]?.code === 0 && !!data[0]?.value?.Token;
   } catch {
     return false;
   }

@@ -9,6 +9,7 @@ import {
   useCreateCamera,
   useUpdateCamera,
   useDeleteCamera,
+  customFetch,
   type Camera
 } from "@workspace/api-client-react"
 import { 
@@ -122,17 +123,21 @@ export default function Settings() {
     setSyncing(true)
     setSyncResult(null)
     try {
-      const resp = await fetch('./api/nvr/sync', { method: 'POST' })
-      const data = await resp.json()
+      // Use customFetch so the Home Assistant ingress base URL is applied
+      // (a raw relative fetch would hit Home Assistant instead of the addon).
+      const data = await customFetch<{ online: boolean; camerasCount: number }>(
+        '/api/nvr/sync',
+        { method: 'POST', responseType: 'json' }
+      )
       setSyncResult({ online: data.online, camerasCount: data.camerasCount })
       queryClient.invalidateQueries({ queryKey: ['/api/nvr/cameras'] })
       if (data.online) {
         toast({ title: `NVR connesso ✓ — ${data.camerasCount} telecamere sincronizzate` })
       } else {
-        toast({ title: "NVR non raggiungibile", description: "Controlla IP, porta API e credenziali.", variant: "destructive" })
+        toast({ title: "NVR non raggiungibile", description: "Controlla IP, porta API (80) e credenziali locali dell'NVR.", variant: "destructive" })
       }
     } catch (err: any) {
-      toast({ title: "Errore di sincronizzazione", description: err.message, variant: "destructive" })
+      toast({ title: "Errore di sincronizzazione", description: err?.message ?? "Errore sconosciuto", variant: "destructive" })
     } finally {
       setSyncing(false)
     }
