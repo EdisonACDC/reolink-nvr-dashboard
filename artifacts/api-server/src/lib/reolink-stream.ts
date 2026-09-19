@@ -25,6 +25,10 @@ const STREAM_ROOT = path.join(os.tmpdir(), "reolink-nvr-hls");
 const IDLE_TIMEOUT_MS = 30_000;
 const RESTART_DELAY_MS = 3_000;
 
+function scrubCredentials(message: string): string {
+  return message.replace(/rtsp:\/\/[^@\s]+@/gi, "rtsp://***@");
+}
+
 function cleanHost(host: string): string {
   return host.trim().replace(/^https?:\/\//i, "").replace(/\/$/, "");
 }
@@ -94,7 +98,7 @@ function startStream(
 
   child.stderr!.setEncoding("utf8");
   child.stderr!.on("data", (chunk: string) => {
-    state.lastError = `${state.lastError}${chunk}`.slice(-2000);
+    state.lastError = scrubCredentials(`${state.lastError}${chunk}`).slice(-2000);
   });
   child.on("error", (error) => {
     state.lastError = error.message;
