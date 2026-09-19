@@ -20,23 +20,10 @@ export default function Recordings() {
   
   const formattedDate = format(date, "yyyy-MM-dd")
   
-  const { data: recordings, isLoading } = useGetRecordings({
-    query: {
-      queryKey: ['/api/recordings', { date: formattedDate, cameraId: cameraId === "all" ? undefined : parseInt(cameraId) }]
-    }
-  }, {
-    request: {
-      // Pass params to URL
-    } as any // The generated hook might need specific params structure, we just pass what forces reactivity
-  })
-
-  // Re-map the query hook properly based on generated spec structure
-  const activeRecordings = useGetRecordings({
+  const { data: activeRecordings, isLoading: isLoadingRecords } = useGetRecordings({
     cameraId: cameraId === "all" ? undefined : parseInt(cameraId),
     date: formattedDate
-  }).data
-
-  const isLoadingRecords = useGetRecordings({ date: formattedDate }).isLoading
+  })
 
   const formatDuration = (seconds: number) => {
     const m = Math.floor(seconds / 60)

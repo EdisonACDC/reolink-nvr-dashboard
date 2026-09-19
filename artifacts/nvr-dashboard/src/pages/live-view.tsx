@@ -1,5 +1,5 @@
 import { useState } from "react"
-import { useGetCameras } from "@workspace/api-client-react"
+import { getGetCamerasQueryKey, useGetCameras } from "@workspace/api-client-react"
 import { CameraPlayer } from "@/components/camera-player"
 import { LayoutGrid, Grip, Maximize, AlertCircle } from "lucide-react"
 import { Button } from "@/components/ui/button"
@@ -8,6 +8,7 @@ import { Skeleton } from "@/components/ui/skeleton"
 export default function LiveView() {
   const { data: cameras, isLoading, error } = useGetCameras({
     query: {
+      queryKey: getGetCamerasQueryKey(),
       refetchInterval: 15000, // Refetch status every 15s
     }
   })

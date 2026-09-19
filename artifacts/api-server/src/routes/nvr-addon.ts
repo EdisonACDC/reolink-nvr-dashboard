@@ -2,6 +2,10 @@ import { Router, type IRouter } from "express";
 import { jsonStore } from "../store/json-store";
 import { logger } from "../lib/logger";
 import {
+  getReolinkStreamFile,
+  waitForStreamFile,
+} from "../lib/reolink-stream";
+import {
   GetNvrConfigResponse,
   UpdateNvrConfigBody,
   UpdateNvrConfigResponse,
@@ -176,7 +180,17 @@ function buildSnapshotProxyUrl(cameraId: number): string {
 
 function buildStreamUrl(host: string, rtspPort: number, channel: number): string {
   if (!host) return "";
-  return `./api/stream/camera/${channel}`;
+  return `./api/stream/camera/${channel}/index.m3u8`;
+}
+
+function cleanHost(host: string): string {
+  return host.trim().replace(/^https?:\/\//i, "").replace(/\/$/, "");
+}
+
+function validateChannel(value: string, channelCount: number): number | null {
+  const channel = Number.parseInt(value, 10);
+  if (!Number.isInteger(channel) || channel < 1 || channel > channelCount) return null;
+  return channel;
 }
 
 router.get("/nvr/config", (req, res): void => {
@@ -352,6 +366,91 @@ router.get("/nvr/cameras/:id/snapshot", (req, res): void => {
     url: buildSnapshotProxyUrl(camera.id),
     timestamp: new Date().toISOString(),
   }));
+});
+
+// Proxy dello snapshot: le credenziali del NVR restano nel backend e non
+// vengono mai inviate al browser.
+router.get("/nvr/cameras/:id/snapshot/image", async (req, res): Promise<void> => {
+  const rawId = Array.isArray(req.params.id) ? req.params.id[0] : req.params.id;
+  const cameraId = Number.parseInt(rawId, 10);
+  const camera = jsonStore.getCameraById(cameraId);
+  const config = getOrCreateNvrConfig();
+  if (!camera) { res.status(404).json({ error: "Camera not found" }); return; }
+  if (!config.host || !config.username) {
+    res.status(503).json({ error: "NVR non configurato" });
+    return;
+  }
+
+  const scheme = config.httpPort === 443 ? "https" : "http";
+  const params = new URLSearchParams({
+    cmd: "Snap",
+    channel: String(Math.max(0, camera.channel - 1)),
+    rs: String(Date.now()),
+    user: config.username,
+    password: config.password,
+  });
+  const url = `${scheme}://${cleanHost(config.host)}:${config.httpPort}/cgi-bin/api.cgi?${params}`;
+
+  try {
+    const response = await fetch(url, { signal: AbortSignal.timeout(10_000) });
+    if (!response.ok) {
+      res.status(502).json({ error: `Snapshot NVR: HTTP ${response.status}` });
+      return;
+    }
+    const contentType = response.headers.get("content-type") || "image/jpeg";
+    const image = Buffer.from(await response.arrayBuffer());
+    res.setHeader("Content-Type", contentType);
+    res.setHeader("Cache-Control", "no-store");
+    res.send(image);
+  } catch (error: any) {
+    logger.warn({ cameraId, error: error?.message }, "Snapshot Reolink non disponibile");
+    res.status(502).json({ error: "Snapshot Reolink non disponibile" });
+  }
+});
+
+// RTSP non è riproducibile dai browser. ffmpeg mantiene il codec video del
+// sub-stream e lo impacchetta in HLS, evitando una transcodifica pesante.
+router.get("/stream/camera/:channel/:filename", async (req, res): Promise<void> => {
+  const config = getOrCreateNvrConfig();
+  const rawChannel = Array.isArray(req.params.channel) ? req.params.channel[0] : req.params.channel;
+  const rawFilename = Array.isArray(req.params.filename) ? req.params.filename[0] : req.params.filename;
+  const channel = validateChannel(rawChannel, config.channelCount);
+  const filename = rawFilename || "";
+
+  if (!channel || !/^(index\.m3u8|segment-\d{6}\.ts)$/.test(filename)) {
+    res.status(400).json({ error: "Canale o file HLS non valido" });
+    return;
+  }
+  if (!config.host || !config.username || !config.password) {
+    res.status(503).json({ error: "Configura prima host e credenziali del NVR" });
+    return;
+  }
+
+  const { filePath, state } = getReolinkStreamFile({
+    host: config.host,
+    rtspPort: config.rtspPort,
+    username: config.username,
+    password: config.password,
+  }, channel, filename);
+
+  const available = filename === "index.m3u8"
+    ? await waitForStreamFile(filePath)
+    : await waitForStreamFile(filePath, 3_000);
+
+  if (!available) {
+    res.status(503).json({
+      error: "Stream non disponibile. Verifica RTSP, credenziali e codec H.264 del sub-stream.",
+      detail: state.lastError.slice(-500),
+    });
+    return;
+  }
+
+  res.setHeader(
+    "Content-Type",
+    filename.endsWith(".m3u8") ? "application/vnd.apple.mpegurl" : "video/mp2t",
+  );
+  res.setHeader("Cache-Control", filename.endsWith(".m3u8") ? "no-store" : "public, max-age=30");
+  res.sendFile(filePath);
 });
 
 router.get("/nvr/status", (req, res): void => {

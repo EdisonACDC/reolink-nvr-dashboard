@@ -1,4 +1,4 @@
-import { useGetNvrStatus } from "@workspace/api-client-react"
+import { getGetNvrStatusQueryKey, useGetNvrStatus } from "@workspace/api-client-react"
 import { Activity, HardDrive, Server, Thermometer, Wifi, WifiOff } from "lucide-react"
 import { Progress } from "@/components/ui/progress"
 import { Skeleton } from "@/components/ui/skeleton"
@@ -6,6 +6,7 @@ import { Skeleton } from "@/components/ui/skeleton"
 export function StatusBar() {
   const { data: status, isLoading } = useGetNvrStatus({
     query: {
+      queryKey: getGetNvrStatusQueryKey(),
       refetchInterval: 10000, // Poll every 10s
     }
   })

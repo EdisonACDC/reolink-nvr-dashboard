@@ -6,6 +6,7 @@ RUN apk add --no-cache \
     postgresql-client \
     nodejs \
     npm \
+    ffmpeg \
     gzip
 
 WORKDIR /app
