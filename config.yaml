@@ -1,6 +1,6 @@
 name: "Reolink NVR Dashboard"
-description: "Dashboard per NVR Reolink con live view telecamere e gestione registrazioni"
-version: "1.3.0"
+description: "NVR autonomo per telecamere RTSP/ONVIF con registrazione protetta"
+version: "2.0.0-beta.1"
 slug: "reolink_nvr2"
 init: false
 arch:
@@ -15,4 +15,9 @@ panel_icon: mdi:cctv
 homeassistant_api: false
 host_network: true
 map:
-  - data:rw
+  - type: data
+    read_only: false
+  - type: media
+    read_only: false
+  - type: share
+    read_only: false

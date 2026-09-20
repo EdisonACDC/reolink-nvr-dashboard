@@ -1,7 +1,7 @@
 import fs from "fs";
 import path from "path";
 
-interface NvrConfig {
+export interface NvrConfig {
   id: number;
   name: string;
   host: string;
@@ -16,7 +16,7 @@ interface NvrConfig {
   updatedAt: string;
 }
 
-interface Camera {
+export interface Camera {
   id: number;
   nvrId: number;
   channel: number;
@@ -25,11 +25,18 @@ interface Camera {
   recordingEnabled: boolean;
   motionDetection: boolean;
   resolution: string | null;
+  sourceType?: "standalone" | "reolink_nvr";
+  rtspUrl?: string;
+  subStreamUrl?: string;
+  username?: string;
+  password?: string;
+  recordingMode?: "continuous" | "motion" | "off";
+  retentionDays?: number | null;
   createdAt: string;
   updatedAt: string;
 }
 
-interface Recording {
+export interface Recording {
   id: number;
   cameraId: number;
   cameraName: string;
@@ -42,25 +49,50 @@ interface Recording {
   createdAt: string;
 }
 
+export interface StorageConfig {
+  path: string;
+  retentionMode: "auto" | "days";
+  retentionDays: number;
+  reservePercent: number;
+  reserveGb: number;
+}
+
 interface DbData {
   nvrConfig: NvrConfig[];
   cameras: Camera[];
   recordings: Recording[];
+  storage: StorageConfig;
   seq: { nvrConfig: number; cameras: number; recordings: number };
 }
 
 const DB_FILE = process.env.ADDON_DB_PATH || "/data/nvr-data.json";
 
+const DEFAULT_STORAGE: StorageConfig = {
+  path: process.env.NVR_RECORDINGS_PATH || "/media/reolink-nvr",
+  retentionMode: "auto",
+  retentionDays: 7,
+  reservePercent: 15,
+  reserveGb: 20,
+};
+
 function load(): DbData {
   try {
     if (fs.existsSync(DB_FILE)) {
-      return JSON.parse(fs.readFileSync(DB_FILE, "utf-8"));
+      const data = JSON.parse(fs.readFileSync(DB_FILE, "utf-8")) as Partial<DbData>;
+      return {
+        nvrConfig: data.nvrConfig ?? [],
+        cameras: data.cameras ?? [],
+        recordings: data.recordings ?? [],
+        storage: { ...DEFAULT_STORAGE, ...(data.storage ?? {}) },
+        seq: data.seq ?? { nvrConfig: 1, cameras: 1, recordings: 1 },
+      };
     }
   } catch {}
   return {
     nvrConfig: [],
     cameras: [],
     recordings: [],
+    storage: { ...DEFAULT_STORAGE },
     seq: { nvrConfig: 1, cameras: 1, recordings: 1 },
   };
 }
@@ -76,6 +108,16 @@ function now() {
 }
 
 export const jsonStore = {
+  getStorageConfig(): StorageConfig {
+    return load().storage;
+  },
+
+  updateStorageConfig(data: Partial<StorageConfig>): StorageConfig {
+    const db = load();
+    db.storage = { ...DEFAULT_STORAGE, ...db.storage, ...data };
+    save(db);
+    return db.storage;
+  },
   getNvrConfig(): NvrConfig | undefined {
     return load().nvrConfig[0];
   },
@@ -127,7 +169,10 @@ export const jsonStore = {
     const db = load();
     const idx = db.cameras.findIndex((c) => c.id === id);
     if (idx === -1) return undefined;
-    db.cameras[idx] = { ...db.cameras[idx], ...data, updatedAt: now() };
+    const definedData = Object.fromEntries(
+      Object.entries(data).filter(([, value]) => value !== undefined),
+    ) as Partial<Camera>;
+    db.cameras[idx] = { ...db.cameras[idx], ...definedData, updatedAt: now() };
     save(db);
     return db.cameras[idx];
   },

@@ -1,6 +1,16 @@
 import { Router, type IRouter } from "express";
+import { spawn } from "node:child_process";
 import { jsonStore } from "../store/json-store";
 import { logger } from "../lib/logger";
+import { cameraRtspUrl, publicRtspUrl } from "../lib/camera-source";
+import {
+  getStorageStatus,
+  listRecordedFiles,
+  listStorageLocations,
+  recorderCameraError,
+  recordingFilePath,
+  updateStorageConfig,
+} from "../lib/nvr-recorder";
 import {
   getReolinkStreamFile,
   waitForStreamFile,
@@ -23,6 +33,65 @@ import {
 } from "@workspace/api-zod";
 
 const router: IRouter = Router();
+
+interface CameraSourceFields {
+  sourceType?: "standalone" | "reolink_nvr";
+  rtspUrl?: string;
+  subStreamUrl?: string;
+  username?: string;
+  password?: string;
+  recordingMode?: "continuous" | "motion" | "off";
+  retentionDays?: number | null;
+}
+
+function cameraSourceFields(body: unknown): CameraSourceFields {
+  if (!body || typeof body !== "object") return {};
+  const value = body as Record<string, unknown>;
+  const sourceType = value.sourceType === "reolink_nvr"
+    ? "reolink_nvr"
+    : value.sourceType === "standalone" ? "standalone" : undefined;
+  const mode = value.recordingMode;
+  const recordingMode = mode === "motion" || mode === "off" || mode === "continuous"
+    ? mode
+    : undefined;
+  const retentionDays = value.retentionDays === null
+    ? null
+    : value.retentionDays === undefined
+      ? undefined
+      : Math.min(3650, Math.max(1, Number(value.retentionDays) || 7));
+  return {
+    sourceType,
+    rtspUrl: typeof value.rtspUrl === "string" ? value.rtspUrl.trim() : undefined,
+    subStreamUrl: typeof value.subStreamUrl === "string" ? value.subStreamUrl.trim() : undefined,
+    username: typeof value.username === "string" ? value.username : undefined,
+    password: typeof value.password === "string" ? value.password : undefined,
+    recordingMode,
+    retentionDays,
+  };
+}
+
+function cameraResponse(camera: ReturnType<typeof jsonStore.getCameraById>) {
+  if (!camera) return null;
+  return {
+    id: camera.id,
+    channel: camera.channel,
+    name: camera.name,
+    status: (camera.status || "unknown") as "online" | "offline" | "unknown",
+    recordingEnabled: camera.recordingEnabled,
+    motionDetection: camera.motionDetection,
+    resolution: camera.resolution ?? undefined,
+    nvrId: camera.nvrId,
+    streamUrl: buildStreamUrl(camera.id),
+    snapshotUrl: buildSnapshotProxyUrl(camera.id),
+    sourceType: camera.sourceType || "reolink_nvr",
+    rtspUrl: publicRtspUrl(camera.rtspUrl),
+    subStreamUrl: publicRtspUrl(camera.subStreamUrl),
+    username: camera.username || "",
+    recordingMode: camera.recordingMode || (camera.recordingEnabled ? "continuous" : "off"),
+    retentionDays: camera.retentionDays ?? null,
+    lastError: recorderCameraError(camera.id),
+  };
+}
 
 // ---------------------------------------------------------------------------
 // Reolink NVR HTTP API helpers
@@ -178,9 +247,8 @@ function buildSnapshotProxyUrl(cameraId: number): string {
   return `./api/nvr/cameras/${cameraId}/snapshot/image`;
 }
 
-function buildStreamUrl(host: string, rtspPort: number, channel: number): string {
-  if (!host) return "";
-  return `./api/stream/camera/${channel}/index.m3u8`;
+function buildStreamUrl(cameraId: number): string {
+  return `./api/stream/camera/${cameraId}/index.m3u8`;
 }
 
 function cleanHost(host: string): string {
@@ -191,6 +259,32 @@ function validateChannel(value: string, channelCount: number): number | null {
   const channel = Number.parseInt(value, 10);
   if (!Number.isInteger(channel) || channel < 1 || channel > channelCount) return null;
   return channel;
+}
+
+async function captureRtspSnapshot(sourceUrl: string): Promise<Buffer> {
+  return await new Promise((resolve, reject) => {
+    const child = spawn("ffmpeg", [
+      "-hide_banner", "-loglevel", "error",
+      "-rtsp_transport", "tcp", "-rw_timeout", "8000000",
+      "-i", sourceUrl,
+      "-frames:v", "1", "-f", "image2", "-vcodec", "mjpeg", "pipe:1",
+    ], { stdio: ["ignore", "pipe", "pipe"] });
+    const chunks: Buffer[] = [];
+    let errorText = "";
+    const timer = setTimeout(() => child.kill("SIGTERM"), 10_000);
+    child.stdout!.on("data", (chunk: Buffer) => chunks.push(chunk));
+    child.stderr!.setEncoding("utf8");
+    child.stderr!.on("data", (chunk: string) => {
+      errorText = `${errorText}${chunk}`.replace(/rtsp:\/\/[^@\s]+@/gi, "rtsp://***@").slice(-1000);
+    });
+    child.on("error", reject);
+    child.on("exit", (code) => {
+      clearTimeout(timer);
+      const image = Buffer.concat(chunks);
+      if (code === 0 && image.length > 0) resolve(image);
+      else reject(new Error(errorText || `ffmpeg terminato con codice ${code}`));
+    });
+  });
 }
 
 router.get("/nvr/config", (req, res): void => {
@@ -274,24 +368,18 @@ router.delete("/nvr/config", (req, res): void => {
 router.get("/nvr/cameras", (req, res): void => {
   const config = getOrCreateNvrConfig();
   const cameras = jsonStore.getCameras(config.id);
-  res.json(GetCamerasResponse.parse(cameras.map((cam) => ({
-    id: cam.id,
-    channel: cam.channel,
-    name: cam.name,
-    status: (cam.status || "unknown") as "online" | "offline" | "unknown",
-    recordingEnabled: cam.recordingEnabled,
-    motionDetection: cam.motionDetection,
-    resolution: cam.resolution ?? undefined,
-    nvrId: cam.nvrId,
-    streamUrl: buildStreamUrl(config.host, config.rtspPort, cam.channel),
-    snapshotUrl: buildSnapshotProxyUrl(cam.id),
-  }))));
+  res.json(cameras.map((camera) => cameraResponse(camera)));
 });
 
 router.post("/nvr/cameras", (req, res): void => {
   const parsed = CreateCameraBody.safeParse(req.body);
   if (!parsed.success) {
     res.status(400).json({ error: parsed.error.message });
+    return;
+  }
+  const source = cameraSourceFields(req.body);
+  if ((source.sourceType ?? "standalone") === "standalone" && !source.rtspUrl) {
+    res.status(400).json({ error: "Inserisci il flusso RTSP principale" });
     return;
   }
   const config = getOrCreateNvrConfig();
@@ -303,19 +391,15 @@ router.post("/nvr/cameras", (req, res): void => {
     recordingEnabled: parsed.data.recordingEnabled ?? true,
     motionDetection: parsed.data.motionDetection ?? true,
     resolution: null,
+    sourceType: source.sourceType ?? "standalone",
+    rtspUrl: source.rtspUrl ?? "",
+    subStreamUrl: source.subStreamUrl ?? "",
+    username: source.username ?? "",
+    password: source.password ?? "",
+    recordingMode: source.recordingMode ?? "continuous",
+    retentionDays: source.retentionDays ?? null,
   });
-  res.status(201).json({
-    id: camera.id,
-    channel: camera.channel,
-    name: camera.name,
-    status: "unknown" as const,
-    recordingEnabled: camera.recordingEnabled,
-    motionDetection: camera.motionDetection,
-    resolution: camera.resolution ?? undefined,
-    nvrId: camera.nvrId,
-    streamUrl: buildStreamUrl(config.host, config.rtspPort, camera.channel),
-    snapshotUrl: buildSnapshotProxyUrl(camera.id),
-  });
+  res.status(201).json(cameraResponse(camera));
 });
 
 router.put("/nvr/cameras/:id", (req, res): void => {
@@ -324,26 +408,23 @@ router.put("/nvr/cameras/:id", (req, res): void => {
   if (!params.success) { res.status(400).json({ error: params.error.message }); return; }
   const parsed = UpdateCameraBody.safeParse(req.body);
   if (!parsed.success) { res.status(400).json({ error: parsed.error.message }); return; }
+  const source = cameraSourceFields(req.body);
   const config = getOrCreateNvrConfig();
   const camera = jsonStore.updateCamera(params.data.id, {
     channel: parsed.data.channel,
     name: parsed.data.name,
     recordingEnabled: parsed.data.recordingEnabled,
     motionDetection: parsed.data.motionDetection,
+    sourceType: source.sourceType,
+    rtspUrl: source.rtspUrl,
+    subStreamUrl: source.subStreamUrl,
+    username: source.username,
+    password: source.password || undefined,
+    recordingMode: source.recordingMode,
+    retentionDays: source.retentionDays,
   });
   if (!camera) { res.status(404).json({ error: "Camera not found" }); return; }
-  res.json(UpdateCameraResponse.parse({
-    id: camera.id,
-    channel: camera.channel,
-    name: camera.name,
-    status: (camera.status || "unknown") as "online" | "offline" | "unknown",
-    recordingEnabled: camera.recordingEnabled,
-    motionDetection: camera.motionDetection,
-    resolution: camera.resolution ?? undefined,
-    nvrId: camera.nvrId,
-    streamUrl: buildStreamUrl(config.host, config.rtspPort, camera.channel),
-    snapshotUrl: buildSnapshotProxyUrl(camera.id),
-  }));
+  res.json(cameraResponse(camera));
 });
 
 router.delete("/nvr/cameras/:id", (req, res): void => {
@@ -376,6 +457,22 @@ router.get("/nvr/cameras/:id/snapshot/image", async (req, res): Promise<void> =>
   const camera = jsonStore.getCameraById(cameraId);
   const config = getOrCreateNvrConfig();
   if (!camera) { res.status(404).json({ error: "Camera not found" }); return; }
+
+  if (camera.sourceType === "standalone" || camera.rtspUrl) {
+    const sourceUrl = cameraRtspUrl(camera, config, "sub");
+    if (!sourceUrl) { res.status(503).json({ error: "Flusso RTSP non configurato" }); return; }
+    try {
+      const image = await captureRtspSnapshot(sourceUrl);
+      res.setHeader("Content-Type", "image/jpeg");
+      res.setHeader("Cache-Control", "no-store");
+      res.send(image);
+    } catch (error: any) {
+      logger.warn({ cameraId, error: error?.message }, "Snapshot RTSP non disponibile");
+      res.status(502).json({ error: "Snapshot RTSP non disponibile" });
+    }
+    return;
+  }
+
   if (!config.host || !config.username) {
     res.status(503).json({ error: "NVR non configurato" });
     return;
@@ -414,24 +511,23 @@ router.get("/stream/camera/:channel/:filename", async (req, res): Promise<void> 
   const config = getOrCreateNvrConfig();
   const rawChannel = Array.isArray(req.params.channel) ? req.params.channel[0] : req.params.channel;
   const rawFilename = Array.isArray(req.params.filename) ? req.params.filename[0] : req.params.filename;
-  const channel = validateChannel(rawChannel, config.channelCount);
+  const cameraId = Number.parseInt(rawChannel, 10);
+  const camera = jsonStore.getCameraById(cameraId);
   const filename = rawFilename || "";
 
-  if (!channel || !/^(index\.m3u8|segment-\d{6}\.ts)$/.test(filename)) {
+  if (!camera || !/^(index\.m3u8|segment-\d{6}\.ts)$/.test(filename)) {
     res.status(400).json({ error: "Canale o file HLS non valido" });
     return;
   }
-  if (!config.host || !config.username || !config.password) {
-    res.status(503).json({ error: "Configura prima host e credenziali del NVR" });
+  const sourceUrl = cameraRtspUrl(camera, config, "sub");
+  if (!sourceUrl) {
+    res.status(503).json({ error: "Configura il flusso RTSP della telecamera" });
     return;
   }
 
   const { filePath, state } = getReolinkStreamFile({
-    host: config.host,
-    rtspPort: config.rtspPort,
-    username: config.username,
-    password: config.password,
-  }, channel, filename);
+    sourceUrl,
+  }, camera.id, filename);
 
   const available = filename === "index.m3u8"
     ? await waitForStreamFile(filePath)
@@ -457,16 +553,43 @@ router.get("/nvr/status", (req, res): void => {
   const config = getOrCreateNvrConfig();
   const cameras = jsonStore.getCameras(config.id);
   const online = cameras.filter((c) => c.status === "online").length;
+  const storage = getStorageStatus();
   res.json(GetNvrStatusResponse.parse({
-    connected: config.configured && config.host !== "",
-    diskUsage: 1.2 * 1024,
-    diskTotal: 4 * 1024,
-    uptime: "0d 0h",
-    temperature: 45,
+    connected: cameras.length > 0 && online > 0,
+    diskUsage: storage.recordingsBytes / (1024 ** 3),
+    diskTotal: storage.totalBytes / (1024 ** 3),
+    uptime: `${Math.floor(process.uptime() / 86400)}d ${Math.floor(process.uptime() % 86400 / 3600)}h`,
     camerasOnline: online,
     camerasTotal: cameras.length,
-    recordingActive: cameras.some((c) => c.recordingEnabled),
+    recordingActive: storage.recordingProcesses > 0,
   }));
+});
+
+router.get("/nvr/storage", (_req, res): void => {
+  try {
+    res.json({ ...getStorageStatus(), locations: listStorageLocations() });
+  } catch (error: any) {
+    res.status(500).json({ error: error?.message || "Archivio non disponibile" });
+  }
+});
+
+router.put("/nvr/storage", (req, res): void => {
+  const body = req.body as Record<string, unknown>;
+  if (!body || typeof body.path !== "string" || !body.path.trim()) {
+    res.status(400).json({ error: "Percorso archivio mancante" });
+    return;
+  }
+  try {
+    res.json(updateStorageConfig({
+      path: body.path,
+      retentionMode: body.retentionMode === "days" ? "days" : "auto",
+      retentionDays: Number(body.retentionDays),
+      reservePercent: Number(body.reservePercent),
+      reserveGb: Number(body.reserveGb),
+    }));
+  } catch (error: any) {
+    res.status(400).json({ error: error?.message || "Configurazione archivio non valida" });
+  }
 });
 
 // Manual camera sync / connection test endpoint
@@ -487,22 +610,20 @@ router.post("/nvr/sync", async (req, res): Promise<void> => {
   res.json({ success: true, online, reason, camerasCount: config.channelCount });
 });
 
+router.get("/recordings/play/:cameraId", (req, res): void => {
+  const rawId = Array.isArray(req.params.cameraId) ? req.params.cameraId[0] : req.params.cameraId;
+  const rawFile = typeof req.query.file === "string" ? req.query.file : "";
+  const filePath = recordingFilePath(Number.parseInt(rawId, 10), rawFile);
+  if (!filePath) { res.status(404).json({ error: "Registrazione non trovata" }); return; }
+  res.setHeader("Cache-Control", "private, max-age=3600");
+  res.sendFile(filePath);
+});
+
 router.get("/recordings", (req, res): void => {
   const queryParsed = GetRecordingsQueryParams.safeParse(req.query);
   if (!queryParsed.success) { res.status(400).json({ error: queryParsed.error.message }); return; }
   const { cameraId, date } = queryParsed.data;
-  const recordings = jsonStore.getRecordings({ cameraId, date });
-  res.json(GetRecordingsResponse.parse(recordings.map((r) => ({
-    id: r.id,
-    cameraId: r.cameraId,
-    cameraName: r.cameraName,
-    startTime: r.startTime,
-    endTime: r.endTime,
-    duration: r.duration,
-    fileSize: r.fileSize,
-    type: r.type as "continuous" | "motion" | "manual",
-    playbackUrl: r.playbackUrl ?? undefined,
-  }))));
+  res.json(GetRecordingsResponse.parse(listRecordedFiles(cameraId, date)));
 });
 
 export default router;

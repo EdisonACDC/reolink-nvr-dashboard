@@ -128,9 +128,13 @@ export default function Recordings() {
                     <Button size="icon" variant="ghost" className="h-8 w-8 text-primary hover:bg-primary/20" onClick={() => setSelectedVideo(rec)}>
                       <Play className="w-4 h-4" />
                     </Button>
-                    <Button size="icon" variant="ghost" className="h-8 w-8 text-muted-foreground hover:text-foreground">
-                      <Download className="w-4 h-4" />
-                    </Button>
+                    {rec.playbackUrl && (
+                      <Button asChild size="icon" variant="ghost" className="h-8 w-8 text-muted-foreground hover:text-foreground">
+                        <a href={rec.playbackUrl} download aria-label="Scarica registrazione">
+                          <Download className="w-4 h-4" />
+                        </a>
+                      </Button>
+                    )}
                   </div>
                 </div>
               ))}

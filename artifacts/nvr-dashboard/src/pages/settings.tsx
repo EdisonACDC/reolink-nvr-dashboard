@@ -1,4 +1,4 @@
-import { useState } from "react"
+import { useEffect, useState } from "react"
 import { useForm } from "react-hook-form"
 import { zodResolver } from "@hookform/resolvers/zod"
 import { z } from "zod"
@@ -6,9 +6,6 @@ import {
   useGetNvrConfig, 
   useUpdateNvrConfig, 
   useGetCameras,
-  useCreateCamera,
-  useUpdateCamera,
-  useDeleteCamera,
   customFetch,
   type Camera
 } from "@workspace/api-client-react"
@@ -25,7 +22,10 @@ import {
   RefreshCw,
   Wifi,
   WifiOff,
-  RotateCcw
+  RotateCcw,
+  HardDrive,
+  Database,
+  AlertTriangle
 } from "lucide-react"
 import { useQueryClient } from "@tanstack/react-query"
 
@@ -57,7 +57,44 @@ const cameraSchema = z.object({
   name: z.string().min(1, "Name is required"),
   recordingEnabled: z.boolean().default(true),
   motionDetection: z.boolean().default(true),
+  sourceType: z.enum(["standalone", "reolink_nvr"]),
+  rtspUrl: z.string().optional(),
+  subStreamUrl: z.string().optional(),
+  username: z.string().optional(),
+  password: z.string().optional(),
+  recordingMode: z.enum(["continuous", "motion", "off"]),
+  retentionDays: z.coerce.number().min(1).max(3650).nullable().optional(),
+}).refine((value) => value.sourceType === "reolink_nvr" || Boolean(value.rtspUrl), {
+  message: "Inserisci l'indirizzo RTSP principale",
+  path: ["rtspUrl"],
 })
+
+type NvrCamera = Camera & {
+  sourceType?: "standalone" | "reolink_nvr"
+  rtspUrl?: string
+  subStreamUrl?: string
+  username?: string
+  recordingMode?: "continuous" | "motion" | "off"
+  retentionDays?: number | null
+  lastError?: string
+}
+
+type StorageStatus = {
+  path: string
+  totalBytes: number
+  freeBytes: number
+  recordingsBytes: number
+  reservedBytes: number
+  availableForRecordingsBytes: number
+  estimatedDays: number | null
+  retentionMode: "auto" | "days"
+  retentionDays: number
+  reservePercent: number
+  reserveGb: number
+  recordingProcesses: number
+  warning: string | null
+  locations?: Array<{ path: string; label: string }>
+}
 
 export default function Settings() {
   const { toast } = useToast()
@@ -69,16 +106,29 @@ export default function Settings() {
 
   // Camera Queries
   const { data: cameras, isLoading: isCamerasLoading } = useGetCameras()
-  const createCamera = useCreateCamera()
-  const updateCamera = useUpdateCamera()
-  const deleteCamera = useDeleteCamera()
-
-  const [activeTab, setActiveTab] = useState("nvr")
+  const [activeTab, setActiveTab] = useState("cameras")
   const [cameraDialogOpen, setCameraDialogOpen] = useState(false)
   const [editingCamera, setEditingCamera] = useState<Camera | null>(null)
   const [syncing, setSyncing] = useState(false)
   const [syncResult, setSyncResult] = useState<{ online: boolean; camerasCount: number } | null>(null)
   const [resetting, setResetting] = useState(false)
+  const [savingCamera, setSavingCamera] = useState(false)
+  const [storage, setStorage] = useState<StorageStatus | null>(null)
+  const [savingStorage, setSavingStorage] = useState(false)
+
+  const loadStorage = async () => {
+    try {
+      setStorage(await customFetch<StorageStatus>('/api/nvr/storage', { responseType: 'json' }))
+    } catch (error: any) {
+      toast({ title: "Archivio non disponibile", description: error?.message, variant: "destructive" })
+    }
+  }
+
+  useEffect(() => {
+    loadStorage()
+    const timer = setInterval(loadStorage, 15000)
+    return () => clearInterval(timer)
+  }, [])
 
   // Forms
   const nvrForm = useForm<z.infer<typeof nvrConfigSchema>>({
@@ -101,7 +151,14 @@ export default function Settings() {
       channel: 1,
       name: "",
       recordingEnabled: true,
-      motionDetection: true
+      motionDetection: true,
+      sourceType: "standalone",
+      rtspUrl: "",
+      subStreamUrl: "",
+      username: "admin",
+      password: "",
+      recordingMode: "continuous",
+      retentionDays: null,
     }
   })
 
@@ -174,54 +231,88 @@ export default function Settings() {
     }
   }
 
-  const openCameraDialog = (cam?: Camera) => {
+  const openCameraDialog = (cam?: NvrCamera) => {
     if (cam) {
       setEditingCamera(cam)
       camForm.reset({
         channel: cam.channel,
         name: cam.name,
         recordingEnabled: cam.recordingEnabled,
-        motionDetection: cam.motionDetection
+        motionDetection: cam.motionDetection,
+        sourceType: cam.sourceType || "reolink_nvr",
+        rtspUrl: cam.rtspUrl || "",
+        subStreamUrl: cam.subStreamUrl || "",
+        username: cam.username || "admin",
+        password: "",
+        recordingMode: cam.recordingMode || "continuous",
+        retentionDays: cam.retentionDays ?? null,
       })
     } else {
       setEditingCamera(null)
       // Auto-suggest next channel
       const nextCh = cameras ? Math.max(...cameras.map(c => c.channel), 0) + 1 : 1
-      camForm.reset({ channel: nextCh, name: `Camera ${nextCh}`, recordingEnabled: true, motionDetection: true })
+      camForm.reset({
+        channel: nextCh, name: `Camera ${nextCh}`, recordingEnabled: true,
+        motionDetection: true, sourceType: "standalone", rtspUrl: "",
+        subStreamUrl: "", username: "admin", password: "",
+        recordingMode: "continuous", retentionDays: null,
+      })
     }
     setCameraDialogOpen(true)
   }
 
-  const onCameraSubmit = (values: z.infer<typeof cameraSchema>) => {
-    if (editingCamera) {
-      updateCamera.mutate({ id: editingCamera.id, data: values }, {
-        onSuccess: () => {
-          toast({ title: "Camera updated" })
-          queryClient.invalidateQueries({ queryKey: ['/api/nvr/cameras'] })
-          setCameraDialogOpen(false)
-        }
+  const onCameraSubmit = async (values: z.infer<typeof cameraSchema>) => {
+    setSavingCamera(true)
+    try {
+      await customFetch(editingCamera ? `/api/nvr/cameras/${editingCamera.id}` : '/api/nvr/cameras', {
+        method: editingCamera ? 'PUT' : 'POST',
+        body: JSON.stringify(values),
+        headers: { 'Content-Type': 'application/json' },
+        responseType: 'json'
       })
-    } else {
-      createCamera.mutate({ data: values }, {
-        onSuccess: () => {
-          toast({ title: "Camera added" })
-          queryClient.invalidateQueries({ queryKey: ['/api/nvr/cameras'] })
-          setCameraDialogOpen(false)
-        }
-      })
+      toast({ title: editingCamera ? "Telecamera aggiornata" : "Telecamera aggiunta" })
+      queryClient.invalidateQueries({ queryKey: ['/api/nvr/cameras'] })
+      setCameraDialogOpen(false)
+    } catch (error: any) {
+      toast({ title: "Errore telecamera", description: error?.message, variant: "destructive" })
+    } finally {
+      setSavingCamera(false)
     }
   }
 
-  const handleDeleteCamera = (id: number) => {
+  const handleDeleteCamera = async (id: number) => {
     if (confirm("Are you sure you want to remove this camera?")) {
-      deleteCamera.mutate({ id }, {
-        onSuccess: () => {
-          toast({ title: "Camera removed" })
-          queryClient.invalidateQueries({ queryKey: ['/api/nvr/cameras'] })
-        }
-      })
+      await customFetch(`/api/nvr/cameras/${id}`, { method: 'DELETE' })
+      toast({ title: "Telecamera rimossa" })
+      queryClient.invalidateQueries({ queryKey: ['/api/nvr/cameras'] })
     }
   }
+
+  const saveStorage = async () => {
+    if (!storage) return
+    setSavingStorage(true)
+    try {
+      const updated = await customFetch<StorageStatus>('/api/nvr/storage', {
+        method: 'PUT', responseType: 'json',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          path: storage.path,
+          retentionMode: storage.retentionMode,
+          retentionDays: storage.retentionDays,
+          reservePercent: storage.reservePercent,
+          reserveGb: storage.reserveGb,
+        })
+      })
+      setStorage({ ...storage, ...updated })
+      toast({ title: "Archivio registrazioni salvato" })
+    } catch (error: any) {
+      toast({ title: "Errore archivio", description: error?.message, variant: "destructive" })
+    } finally {
+      setSavingStorage(false)
+    }
+  }
+
+  const formatBytes = (bytes: number) => `${(bytes / (1024 ** 3)).toFixed(1)} GB`
 
   return (
     <div className="flex flex-col bg-background p-4 md:p-6 pb-24">
@@ -229,16 +320,19 @@ export default function Settings() {
         <h1 className="text-2xl font-bold tracking-tight text-foreground flex items-center gap-2">
           <Settings2 className="w-6 h-6 text-primary" /> Configuration
         </h1>
-        <p className="text-sm text-muted-foreground mt-1">Manage NVR connection and camera settings</p>
+        <p className="text-sm text-muted-foreground mt-1">NVR autonomo: telecamere, registrazione e memoria</p>
       </div>
 
       <Tabs value={activeTab} onValueChange={setActiveTab}>
-        <TabsList className="w-full max-w-md grid grid-cols-2 mb-6 bg-card border border-border/50 p-1">
+        <TabsList className="w-full max-w-2xl grid grid-cols-3 mb-6 bg-card border border-border/50 p-1">
           <TabsTrigger value="nvr" className="data-[state=active]:bg-primary/20 data-[state=active]:text-primary">
-            <Server className="w-4 h-4 mr-2" /> NVR System
+            <Server className="w-4 h-4 mr-2" /> NVR Reolink
           </TabsTrigger>
           <TabsTrigger value="cameras" className="data-[state=active]:bg-primary/20 data-[state=active]:text-primary">
             <CameraIcon className="w-4 h-4 mr-2" /> Cameras
+          </TabsTrigger>
+          <TabsTrigger value="storage" className="data-[state=active]:bg-primary/20 data-[state=active]:text-primary">
+            <HardDrive className="w-4 h-4 mr-2" /> Memoria
           </TabsTrigger>
         </TabsList>
 
@@ -246,8 +340,8 @@ export default function Settings() {
           <TabsContent value="nvr" className="mt-0">
             <Card className="border-border/50 shadow-lg shadow-black/5 bg-card max-w-3xl">
               <CardHeader className="border-b border-border/50 bg-muted/10">
-                <CardTitle>Connection Settings</CardTitle>
-                <CardDescription>Enter the credentials to connect to your Reolink NVR on the local network.</CardDescription>
+                <CardTitle>Importazione da NVR Reolink (opzionale)</CardTitle>
+                <CardDescription>Serve solo se vuoi mantenere temporaneamente il registratore fisico. Le telecamere autonome si configurano nella scheda Telecamere.</CardDescription>
               </CardHeader>
               <CardContent className="p-6">
                 {isNvrLoading ? (
@@ -377,6 +471,84 @@ export default function Settings() {
             </Card>
           </TabsContent>
 
+          <TabsContent value="storage" className="mt-0 space-y-4">
+            <Card className="border-border/50 shadow-lg shadow-black/5 bg-card max-w-4xl">
+              <CardHeader className="border-b border-border/50 bg-muted/10">
+                <CardTitle className="flex items-center gap-2"><Database className="w-5 h-5 text-primary" /> Archivio registrazioni</CardTitle>
+                <CardDescription>Lo spazio riservato non viene mai utilizzato dalle registrazioni.</CardDescription>
+              </CardHeader>
+              <CardContent className="p-6 space-y-6">
+                {!storage ? (
+                  <div className="space-y-3"><Skeleton className="h-20 w-full" /><Skeleton className="h-32 w-full" /></div>
+                ) : (
+                  <>
+                    {storage.warning && (
+                      <div className="flex gap-3 rounded-lg border border-destructive/30 bg-destructive/10 p-4 text-destructive">
+                        <AlertTriangle className="w-5 h-5 shrink-0" /><span>{storage.warning}</span>
+                      </div>
+                    )}
+                    <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+                      <div className="rounded-lg border border-border/50 p-3"><div className="text-xs text-muted-foreground">Capacità</div><div className="font-semibold">{formatBytes(storage.totalBytes)}</div></div>
+                      <div className="rounded-lg border border-border/50 p-3"><div className="text-xs text-muted-foreground">Libero</div><div className="font-semibold text-success">{formatBytes(storage.freeBytes)}</div></div>
+                      <div className="rounded-lg border border-border/50 p-3"><div className="text-xs text-muted-foreground">Registrazioni</div><div className="font-semibold text-primary">{formatBytes(storage.recordingsBytes)}</div></div>
+                      <div className="rounded-lg border border-border/50 p-3"><div className="text-xs text-muted-foreground">Riservato HA</div><div className="font-semibold text-warning">{formatBytes(storage.reservedBytes)}</div></div>
+                    </div>
+
+                    <div className="space-y-2">
+                      <Label>Percorso di registrazione</Label>
+                      <Input
+                        list="storage-locations"
+                        value={storage.path}
+                        onChange={(event) => setStorage({ ...storage, path: event.target.value })}
+                        placeholder="/media/reolink-nvr"
+                      />
+                      <datalist id="storage-locations">
+                        {storage.locations?.map((location) => <option key={location.path} value={location.path}>{location.label}</option>)}
+                      </datalist>
+                      <p className="text-xs text-muted-foreground">Sono ammessi percorsi sotto /media, /share o /data.</p>
+                    </div>
+
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                      <div className="space-y-2">
+                        <Label>Gestione conservazione</Label>
+                        <select
+                          className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
+                          value={storage.retentionMode}
+                          onChange={(event) => setStorage({ ...storage, retentionMode: event.target.value as "auto" | "days" })}
+                        >
+                          <option value="auto">Automatica — usa lo spazio disponibile</option>
+                          <option value="days">Numero di giorni scelto</option>
+                        </select>
+                      </div>
+                      <div className="space-y-2">
+                        <Label>Giorni da conservare</Label>
+                        <Input type="number" min={1} max={3650} disabled={storage.retentionMode === "auto"} value={storage.retentionDays} onChange={(event) => setStorage({ ...storage, retentionDays: Number(event.target.value) })} />
+                      </div>
+                      <div className="space-y-2">
+                        <Label>Riserva minima (%)</Label>
+                        <Input type="number" min={5} max={50} value={storage.reservePercent} onChange={(event) => setStorage({ ...storage, reservePercent: Number(event.target.value) })} />
+                      </div>
+                      <div className="space-y-2">
+                        <Label>Riserva minima (GB)</Label>
+                        <Input type="number" min={5} max={1000} value={storage.reserveGb} onChange={(event) => setStorage({ ...storage, reserveGb: Number(event.target.value) })} />
+                      </div>
+                    </div>
+
+                    <div className="rounded-lg bg-muted/20 border border-border/50 p-4 text-sm">
+                      <div>Processi di registrazione attivi: <strong>{storage.recordingProcesses}</strong></div>
+                      <div>Spazio ancora utilizzabile: <strong>{formatBytes(storage.availableForRecordingsBytes)}</strong></div>
+                      <div>Autonomia stimata: <strong>{storage.estimatedDays === null ? "in calcolo dopo le prime registrazioni" : `${storage.estimatedDays} giorni`}</strong></div>
+                    </div>
+
+                    <div className="flex justify-end">
+                      <Button onClick={saveStorage} disabled={savingStorage}><Save className="w-4 h-4 mr-2" />{savingStorage ? "Salvataggio..." : "Salva archivio"}</Button>
+                    </div>
+                  </>
+                )}
+              </CardContent>
+            </Card>
+          </TabsContent>
+
           <TabsContent value="cameras" className="mt-0 space-y-4">
             <div className="flex justify-between items-center max-w-4xl">
               <h2 className="text-lg font-semibold text-foreground">Configured Cameras</h2>
@@ -457,6 +629,68 @@ export default function Settings() {
                         </FormItem>
                       )} />
                     </div>
+
+                    <FormField control={camForm.control} name="sourceType" render={({ field }) => (
+                      <FormItem>
+                        <FormLabel>Tipo collegamento</FormLabel>
+                        <FormControl>
+                          <select className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm" {...field}>
+                            <option value="standalone">Telecamera autonoma RTSP / ONVIF</option>
+                            <option value="reolink_nvr">Canale del vecchio NVR Reolink</option>
+                          </select>
+                        </FormControl>
+                        <FormMessage />
+                      </FormItem>
+                    )} />
+
+                    {camForm.watch("sourceType") === "standalone" && (
+                      <div className="space-y-4 rounded-xl border border-border/50 p-4 bg-muted/5">
+                        <FormField control={camForm.control} name="rtspUrl" render={({ field }) => (
+                          <FormItem>
+                            <FormLabel>Flusso RTSP principale (registrazione)</FormLabel>
+                            <FormControl><Input placeholder="rtsp://192.168.1.120:554/stream1" {...field} className="bg-background" /></FormControl>
+                            <FormMessage />
+                          </FormItem>
+                        )} />
+                        <FormField control={camForm.control} name="subStreamUrl" render={({ field }) => (
+                          <FormItem>
+                            <FormLabel>Sub-stream RTSP (live, opzionale)</FormLabel>
+                            <FormControl><Input placeholder="rtsp://192.168.1.120:554/stream2" {...field} className="bg-background" /></FormControl>
+                            <FormDescription className="text-xs">Se vuoto viene utilizzato il flusso principale.</FormDescription>
+                          </FormItem>
+                        )} />
+                        <div className="grid grid-cols-2 gap-4">
+                          <FormField control={camForm.control} name="username" render={({ field }) => (
+                            <FormItem><FormLabel>Utente locale</FormLabel><FormControl><Input {...field} className="bg-background" /></FormControl></FormItem>
+                          )} />
+                          <FormField control={camForm.control} name="password" render={({ field }) => (
+                            <FormItem><FormLabel>Password</FormLabel><FormControl><Input type="password" placeholder={editingCamera ? "Lascia vuoto per non cambiarla" : "Password telecamera"} {...field} className="bg-background" /></FormControl></FormItem>
+                          )} />
+                        </div>
+                      </div>
+                    )}
+
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                      <FormField control={camForm.control} name="recordingMode" render={({ field }) => (
+                        <FormItem>
+                          <FormLabel>Modalità registrazione</FormLabel>
+                          <FormControl>
+                            <select className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm" {...field}>
+                              <option value="continuous">Continua 24/7</option>
+                              <option value="motion" disabled>Movimento (prossimo aggiornamento)</option>
+                              <option value="off">Disattivata</option>
+                            </select>
+                          </FormControl>
+                        </FormItem>
+                      )} />
+                      <FormField control={camForm.control} name="retentionDays" render={({ field }) => (
+                        <FormItem>
+                          <FormLabel>Giorni personalizzati</FormLabel>
+                          <FormControl><Input type="number" min={1} max={3650} placeholder="Usa impostazione globale" value={field.value ?? ""} onChange={(event) => field.onChange(event.target.value === "" ? null : Number(event.target.value))} /></FormControl>
+                          <FormDescription className="text-xs">Vuoto = gestione globale dell'archivio.</FormDescription>
+                        </FormItem>
+                      )} />
+                    </div>
                     
                     <div className="space-y-4 pt-2 border-t border-border/50">
                       <FormField control={camForm.control} name="recordingEnabled" render={({ field }) => (
@@ -486,8 +720,8 @@ export default function Settings() {
 
                     <div className="flex justify-end pt-4 gap-2">
                       <Button type="button" variant="outline" onClick={() => setCameraDialogOpen(false)}>Cancel</Button>
-                      <Button type="submit" disabled={createCamera.isPending || updateCamera.isPending}>
-                        {editingCamera ? "Save Changes" : "Add Camera"}
+                      <Button type="submit" disabled={savingCamera}>
+                        {savingCamera ? "Salvataggio..." : editingCamera ? "Salva modifiche" : "Aggiungi telecamera"}
                       </Button>
                     </div>
                   </form>

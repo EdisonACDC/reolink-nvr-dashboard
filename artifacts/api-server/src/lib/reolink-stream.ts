@@ -5,10 +5,11 @@ import path from "node:path";
 import { logger } from "./logger";
 
 export interface ReolinkStreamConfig {
-  host: string;
-  rtspPort: number;
-  username: string;
-  password: string;
+  sourceUrl?: string;
+  host?: string;
+  rtspPort?: number;
+  username?: string;
+  password?: string;
 }
 
 interface StreamState {
@@ -24,6 +25,7 @@ const streams = new Map<number, StreamState>();
 const STREAM_ROOT = path.join(os.tmpdir(), "reolink-nvr-hls");
 const IDLE_TIMEOUT_MS = 30_000;
 const RESTART_DELAY_MS = 3_000;
+let shuttingDown = false;
 
 function scrubCredentials(message: string): string {
   return message.replace(/rtsp:\/\/[^@\s]+@/gi, "rtsp://***@");
@@ -34,14 +36,15 @@ function cleanHost(host: string): string {
 }
 
 function streamSignature(config: ReolinkStreamConfig): string {
-  return `${cleanHost(config.host)}:${config.rtspPort}:${config.username}:${config.password}`;
+  return config.sourceUrl || `${cleanHost(config.host || "")}:${config.rtspPort}:${config.username}:${config.password}`;
 }
 
 function rtspUrl(config: ReolinkStreamConfig, channel: number): string {
-  const username = encodeURIComponent(config.username);
-  const password = encodeURIComponent(config.password);
+  if (config.sourceUrl) return config.sourceUrl;
+  const username = encodeURIComponent(config.username || "");
+  const password = encodeURIComponent(config.password || "");
   const channelId = String(channel).padStart(2, "0");
-  return `rtsp://${username}:${password}@${cleanHost(config.host)}:${config.rtspPort}/h264Preview_${channelId}_sub`;
+  return `rtsp://${username}:${password}@${cleanHost(config.host || "")}:${config.rtspPort}/h264Preview_${channelId}_sub`;
 }
 
 function stopState(channel: number, state: StreamState): void {
@@ -114,7 +117,7 @@ function startStream(
     }
   });
 
-  logger.info({ channel, host: cleanHost(config.host) }, "Stream HLS Reolink avviato");
+  logger.info({ cameraId: channel }, "Stream HLS telecamera avviato");
   return state;
 }
 
@@ -122,6 +125,7 @@ export function ensureReolinkStream(
   config: ReolinkStreamConfig,
   channel: number,
 ): StreamState {
+  if (shuttingDown) throw new Error("Server in arresto");
   const signature = streamSignature(config);
   const existing = streams.get(channel);
   const now = Date.now();
@@ -173,6 +177,7 @@ setInterval(() => {
 }, 10_000).unref();
 
 function stopAllStreams(): void {
+  shuttingDown = true;
   for (const [channel, state] of [...streams]) stopState(channel, state);
 }
 

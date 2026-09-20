@@ -1,34 +1,28 @@
 # Reolink NVR Dashboard
 
-  Dashboard web per la gestione e visualizzazione del tuo NVR Reolink.
+Add-on Home Assistant che trasforma il mini-PC in un NVR autonomo per
+telecamere IP. Il registratore Reolink fisico rimane supportato solo come
+modalità di migrazione opzionale.
 
-  ## Funzionalità
+## Versione 2.0 beta
 
-  - 📹 **Live View** — Griglia telecamere in tempo reale (1/4/9/16 canali)
-  - 🎥 **Registrazioni** — Navigazione con calendario e timeline
-  - ⚙️ **Configurazione** — Setup NVR, telecamere e impostazioni
-  - 📊 **Stato sistema** — Uso disco, temperatura, stato connessione
+- Live view HLS con griglie da 1, 4, 9 o 16 telecamere.
+- Telecamere autonome tramite flussi RTSP principali e secondari.
+- Registrazione continua senza ricodifica, in segmenti MP4 da cinque minuti.
+- Riproduzione, calendario e download delle registrazioni.
+- Conservazione automatica oppure per un numero configurabile di giorni.
+- Archivio selezionabile sotto `/media`, `/share` o `/data`.
+- Riserva disco combinata in GB e percentuale per proteggere Home Assistant.
+- Eliminazione circolare dei filmati più vecchi e arresto di sicurezza.
+- Riavvio automatico dei processi di registrazione interrotti.
+- Credenziali RTSP mai restituite al browser o mostrate nei log.
 
-  ## Stack Tecnologico
+## Collegamento senza NVR fisico
 
-  - **Frontend**: React + Vite + TypeScript + Tailwind CSS
-  - **Backend**: Node.js + Express 5
-  - **Database**: PostgreSQL + Drizzle ORM
-  - **API**: OpenAPI 3.1 con codegen automatico (Orval)
+Le telecamere PoE devono essere collegate a uno switch PoE sulla stessa rete
+del mini-PC. Ogni telecamera deve fornire un flusso RTSP locale; i dispositivi
+esclusivamente cloud non possono effettuare registrazione continua locale.
 
-  ## Setup
-
-  ```bash
-  pnpm install
-  pnpm --filter @workspace/db run push
-  pnpm --filter @workspace/api-server run dev
-  pnpm --filter @workspace/nvr-dashboard run dev
-  ```
-
-  ## Configurazione NVR
-
-  1. Apri la dashboard nel browser
-  2. Vai su **Configuration**
-  3. Inserisci IP, porta, username e password del tuo NVR Reolink
-  4. Aggiungi le telecamere con i relativi canali
-  
+La registrazione su movimento/ONVIF è indicata nell'interfaccia come funzione
+del prossimo aggiornamento beta. In questa release la modalità affidabile è la
+registrazione continua 24/7.

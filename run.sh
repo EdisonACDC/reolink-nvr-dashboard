@@ -1,6 +1,6 @@
 #!/bin/sh
 
-echo "[NVR] Starting Reolink NVR Dashboard v1.3.0..."
+echo "[NVR] Starting Reolink NVR Dashboard v2.0.0-beta.1..."
 
 # Decompress pre-built server bundle if needed
 if [ -f /app/artifacts/api-server/dist/index.mjs.gz ] && [ ! -f /app/artifacts/api-server/dist/index.mjs ]; then
@@ -22,6 +22,7 @@ done
 
 # Ensure data directory exists for JSON storage
 mkdir -p /data
+mkdir -p /media/reolink-nvr/recordings
 
 export PORT=3000
 export NODE_ENV=production
