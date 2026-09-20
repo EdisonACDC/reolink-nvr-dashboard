@@ -607,13 +607,13 @@ export default function Settings() {
             </Card>
 
             <Dialog open={cameraDialogOpen} onOpenChange={setCameraDialogOpen}>
-              <DialogContent className="bg-card border-border/50">
-                <DialogHeader>
+              <DialogContent className="bg-card border-border/50 pb-[max(1rem,env(safe-area-inset-bottom))]">
+                <DialogHeader className="pr-8">
                   <DialogTitle>{editingCamera ? "Edit Camera" : "Add Camera"}</DialogTitle>
                 </DialogHeader>
                 <Form {...camForm}>
                   <form onSubmit={camForm.handleSubmit(onCameraSubmit)} className="space-y-4 pt-4">
-                    <div className="grid grid-cols-4 gap-4">
+                    <div className="grid grid-cols-1 sm:grid-cols-4 gap-4">
                       <FormField control={camForm.control} name="channel" render={({ field }) => (
                         <FormItem className="col-span-1">
                           <FormLabel>Channel</FormLabel>
@@ -622,7 +622,7 @@ export default function Settings() {
                         </FormItem>
                       )} />
                       <FormField control={camForm.control} name="name" render={({ field }) => (
-                        <FormItem className="col-span-3">
+                        <FormItem className="col-span-1 sm:col-span-3">
                           <FormLabel>Camera Name</FormLabel>
                           <FormControl><Input {...field} className="bg-background" /></FormControl>
                           <FormMessage />
@@ -659,7 +659,7 @@ export default function Settings() {
                             <FormDescription className="text-xs">Se vuoto viene utilizzato il flusso principale.</FormDescription>
                           </FormItem>
                         )} />
-                        <div className="grid grid-cols-2 gap-4">
+                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                           <FormField control={camForm.control} name="username" render={({ field }) => (
                             <FormItem><FormLabel>Utente locale</FormLabel><FormControl><Input {...field} className="bg-background" /></FormControl></FormItem>
                           )} />
@@ -718,9 +718,9 @@ export default function Settings() {
                       )} />
                     </div>
 
-                    <div className="flex justify-end pt-4 gap-2">
-                      <Button type="button" variant="outline" onClick={() => setCameraDialogOpen(false)}>Cancel</Button>
-                      <Button type="submit" disabled={savingCamera}>
+                    <div className="sticky bottom-0 -mx-4 sm:-mx-6 px-4 sm:px-6 pt-4 pb-[max(0.25rem,env(safe-area-inset-bottom))] flex flex-col-reverse sm:flex-row sm:justify-end gap-2 bg-card/95 backdrop-blur border-t border-border/50">
+                      <Button className="w-full sm:w-auto" type="button" variant="outline" onClick={() => setCameraDialogOpen(false)}>Annulla</Button>
+                      <Button className="w-full sm:w-auto" type="submit" disabled={savingCamera}>
                         {savingCamera ? "Salvataggio..." : editingCamera ? "Salva modifiche" : "Aggiungi telecamera"}
                       </Button>
                     </div>

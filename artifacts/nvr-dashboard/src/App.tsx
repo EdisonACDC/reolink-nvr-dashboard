@@ -53,7 +53,7 @@ function App() {
       <QueryClientProvider client={queryClient}>
         <TooltipProvider>
           <SidebarProvider style={sidebarStyle}>
-            <div className="flex h-screen w-full font-sans text-foreground overflow-hidden" style={bgStyle}>
+            <div className="app-viewport flex w-full font-sans text-foreground overflow-hidden" style={bgStyle}>
               <AppSidebar />
               <div className="flex flex-col flex-1 min-w-0 bg-background/80 backdrop-blur-sm">
                 <div className="flex relative">
@@ -62,7 +62,7 @@ function App() {
                   </div>
                   <StatusBar />
                 </div>
-                <main className="flex-1 overflow-auto relative">
+                <main className="mobile-scroll min-h-0 flex-1 overflow-y-auto overflow-x-hidden relative">
                   <WouterRouter hook={useHashLocation}>
                     <Router />
                   </WouterRouter>
