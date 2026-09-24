@@ -28,11 +28,34 @@ export function cameraRtspUrl(
     return addCredentials(selected || "", camera.username, camera.password);
   }
 
-  if (!config.host || !config.username || !config.password) return "";
+  return cameraRtspUrls(camera, config, quality)[0] || "";
+}
+
+export function cameraRtspUrls(
+  camera: Camera,
+  config: NvrConfig,
+  quality: "main" | "sub" = "main",
+): string[] {
+  if (camera.sourceType === "standalone" || camera.rtspUrl) {
+    const selected = quality === "sub" && camera.subStreamUrl
+      ? camera.subStreamUrl
+      : camera.rtspUrl;
+    const url = addCredentials(selected || "", camera.username, camera.password);
+    return url ? [url] : [];
+  }
+
+  if (!config.host || !config.username || !config.password) return [];
   const username = encodeURIComponent(config.username);
   const password = encodeURIComponent(config.password);
   const channel = String(camera.channel).padStart(2, "0");
-  return `rtsp://${username}:${password}@${cleanHost(config.host)}:${config.rtspPort}/h264Preview_${channel}_${quality}`;
+  const prefix = `rtsp://${username}:${password}@${cleanHost(config.host)}:${config.rtspPort}`;
+
+  // Gli NVR Reolink recenti usano Preview_XX_sub; diversi modelli meno
+  // recenti espongono invece h264Preview_XX_sub. Manteniamo entrambi.
+  return [
+    `${prefix}/Preview_${channel}_${quality}`,
+    `${prefix}/h264Preview_${channel}_${quality}`,
+  ];
 }
 
 export function publicRtspUrl(rawUrl?: string): string {
@@ -46,4 +69,3 @@ export function publicRtspUrl(rawUrl?: string): string {
     return rawUrl.replace(/rtsp:\/\/[^@\s]+@/gi, "rtsp://");
   }
 }
-

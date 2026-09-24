@@ -3,7 +3,7 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { build as esbuild } from "esbuild";
 import esbuildPluginPino from "esbuild-plugin-pino";
-import { rm } from "node:fs/promises";
+import { readFile, rm, writeFile } from "node:fs/promises";
 
 // Plugins (e.g. 'esbuild-plugin-pino') may use `require` to resolve dependencies
 globalThis.require = createRequire(import.meta.url);
@@ -118,6 +118,16 @@ globalThis.__dirname = __bannerPath.dirname(globalThis.__filename);
     `,
     },
   });
+
+  // esbuild-plugin-pino inserisce nei worker il percorso assoluto della
+  // macchina che compila. Nell'add-on i file si trovano invece sempre qui.
+  // Rendiamo quindi il bundle portabile prima di pubblicarlo.
+  const addonDistDir = "/app/artifacts/api-server/dist";
+  for (const filename of ["index.mjs", "pino-file.mjs", "pino-worker.mjs"]) {
+    const filePath = path.join(distDir, filename);
+    const source = await readFile(filePath, "utf8");
+    await writeFile(filePath, source.replaceAll(distDir, addonDistDir));
+  }
 }
 
 buildAll().catch((err) => {

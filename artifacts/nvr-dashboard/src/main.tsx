@@ -2,6 +2,7 @@ import { createRoot } from "react-dom/client";
 import { setBaseUrl } from "@workspace/api-client-react";
 import App from "./App";
 import { ErrorBoundary } from "./components/error-boundary";
+import { resolveAppBaseUrl } from "./lib/app-url";
 import "./index.css";
 
 // --- Supporto ingress di Home Assistant ------------------------------------
@@ -14,16 +15,7 @@ import "./index.css";
 // Ricaviamo il percorso base di ingress dalla URL corrente e lo anteponiamo a
 // tutte le richieste API. In modalità standalone (servita da `/`) il valore
 // risulta vuoto e i percorsi assoluti continuano a funzionare come prima.
-function resolveApiBaseUrl(): string {
-  let path = window.location.pathname;
-  // Rimuove un eventuale nome file finale (es. index.html).
-  path = path.replace(/\/[^/]*\.[^/]*$/, "/");
-  // Normalizza rimuovendo gli slash finali.
-  path = path.replace(/\/+$/, "");
-  return path;
-}
-
-const apiBaseUrl = resolveApiBaseUrl();
+const apiBaseUrl = resolveAppBaseUrl();
 if (apiBaseUrl) {
   setBaseUrl(apiBaseUrl);
 }

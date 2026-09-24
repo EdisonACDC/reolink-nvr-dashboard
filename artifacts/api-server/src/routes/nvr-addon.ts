@@ -2,7 +2,7 @@ import { Router, type IRouter } from "express";
 import { spawn } from "node:child_process";
 import { jsonStore } from "../store/json-store";
 import { logger } from "../lib/logger";
-import { cameraRtspUrl, publicRtspUrl } from "../lib/camera-source";
+import { cameraRtspUrl, cameraRtspUrls, publicRtspUrl } from "../lib/camera-source";
 import {
   getStorageStatus,
   listRecordedFiles,
@@ -33,6 +33,7 @@ import {
 } from "@workspace/api-zod";
 
 const router: IRouter = Router();
+const preferredLiveSources = new Map<number, string>();
 
 interface CameraSourceFields {
   sourceType?: "standalone" | "reolink_nvr";
@@ -519,34 +520,46 @@ router.get("/stream/camera/:channel/:filename", async (req, res): Promise<void> 
     res.status(400).json({ error: "Canale o file HLS non valido" });
     return;
   }
-  const sourceUrl = cameraRtspUrl(camera, config, "sub");
-  if (!sourceUrl) {
+  const sources = cameraRtspUrls(camera, config, "sub");
+  if (sources.length === 0) {
     res.status(503).json({ error: "Configura il flusso RTSP della telecamera" });
     return;
   }
 
-  const { filePath, state } = getReolinkStreamFile({
-    sourceUrl,
-  }, camera.id, filename);
+  const preferred = preferredLiveSources.get(camera.id);
+  const orderedSources = preferred && sources.includes(preferred)
+    ? [preferred, ...sources.filter((source) => source !== preferred)]
+    : sources;
+  const sourcesToTry = filename === "index.m3u8"
+    ? orderedSources
+    : orderedSources.slice(0, 1);
+  const errors: string[] = [];
 
-  const available = filename === "index.m3u8"
-    ? await waitForStreamFile(filePath)
-    : await waitForStreamFile(filePath, 3_000);
+  for (const sourceUrl of sourcesToTry) {
+    const { filePath, state } = getReolinkStreamFile({ sourceUrl }, camera.id, filename);
+    const available = filename === "index.m3u8"
+      ? await waitForStreamFile(filePath, 8_000)
+      : await waitForStreamFile(filePath, 3_000);
 
-  if (!available) {
-    res.status(503).json({
-      error: "Stream non disponibile. Verifica RTSP, credenziali e codec H.264 del sub-stream.",
-      detail: state.lastError.slice(-500),
-    });
-    return;
+    if (available) {
+      preferredLiveSources.set(camera.id, sourceUrl);
+      res.setHeader(
+        "Content-Type",
+        filename.endsWith(".m3u8") ? "application/vnd.apple.mpegurl" : "video/mp2t",
+      );
+      res.setHeader("Cache-Control", filename.endsWith(".m3u8") ? "no-store" : "public, max-age=30");
+      res.sendFile(filePath);
+      return;
+    }
+
+    errors.push(state.lastError.slice(-500));
   }
 
-  res.setHeader(
-    "Content-Type",
-    filename.endsWith(".m3u8") ? "application/vnd.apple.mpegurl" : "video/mp2t",
-  );
-  res.setHeader("Cache-Control", filename.endsWith(".m3u8") ? "no-store" : "public, max-age=30");
-  res.sendFile(filePath);
+  preferredLiveSources.delete(camera.id);
+  res.status(503).json({
+    error: "Stream non disponibile. Verifica RTSP, credenziali e codec H.264 del sub-stream.",
+    detail: errors.filter(Boolean).join(" | ").slice(-1000),
+  });
 });
 
 router.get("/nvr/status", (req, res): void => {
