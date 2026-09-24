@@ -608,8 +608,10 @@ router.put("/nvr/storage", (req, res): void => {
 // Manual camera sync / connection test endpoint
 router.post("/nvr/sync", async (req, res): Promise<void> => {
   const config = getOrCreateNvrConfig();
-  if (!config.host) {
-    res.status(400).json({ error: "NVR not configured — set host and credentials first" });
+  if (!config.configured || !config.host) {
+    res.status(400).json({
+      error: "NVR non ancora configurato: inserisci IP e credenziali, poi premi Salva e collega.",
+    });
     return;
   }
   const { online, reason } = await reolinkLogin(

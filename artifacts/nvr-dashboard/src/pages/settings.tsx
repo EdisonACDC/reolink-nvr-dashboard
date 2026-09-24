@@ -162,20 +162,15 @@ export default function Settings() {
     }
   })
 
-  const onNvrSubmit = (values: z.infer<typeof nvrConfigSchema>) => {
-    updateNvr.mutate({ data: values }, {
-      onSuccess: () => {
-        toast({ title: "Configurazione salvata — sincronizzazione telecamere in corso..." })
-        queryClient.invalidateQueries({ queryKey: ['/api/nvr/config'] })
-        // Auto-trigger sync after a short delay (backend does it too, but let's refresh the UI)
-        setTimeout(() => {
-          queryClient.invalidateQueries({ queryKey: ['/api/nvr/cameras'] })
-        }, 3000)
-      },
-      onError: (err: any) => {
-        toast({ title: "Errore nel salvataggio", description: err.message, variant: "destructive" })
-      }
-    })
+  const onNvrSubmit = async (values: z.infer<typeof nvrConfigSchema>) => {
+    try {
+      await updateNvr.mutateAsync({ data: values })
+      await queryClient.invalidateQueries({ queryKey: ['/api/nvr/config'] })
+      toast({ title: "Configurazione salvata", description: "Prova di collegamento al NVR in corso..." })
+      await handleSync()
+    } catch (err: any) {
+      toast({ title: "Errore nel salvataggio", description: err?.message, variant: "destructive" })
+    }
   }
 
   const handleSync = async () => {
@@ -442,10 +437,13 @@ export default function Settings() {
                           {resetting ? "Reset..." : "Reset credenziali"}
                         </Button>
                         <div className="flex flex-col sm:flex-row gap-3">
+                          <Button type="submit" disabled={updateNvr.isPending || syncing} className="w-full sm:w-auto shadow-md shadow-primary/20">
+                            {updateNvr.isPending ? "Salvataggio..." : <><Save className="w-4 h-4 mr-2" /> Salva e collega</>}
+                          </Button>
                           <Button
                             type="button"
                             variant="outline"
-                            disabled={syncing}
+                            disabled={syncing || updateNvr.isPending || !nvrConfig?.configured || nvrForm.formState.isDirty}
                             onClick={handleSync}
                             className="w-full sm:w-auto border-primary/30 text-primary hover:bg-primary/10"
                           >
@@ -458,9 +456,6 @@ export default function Settings() {
                             ) : (
                               <><RefreshCw className="w-4 h-4 mr-2" /> Sincronizza telecamere</>
                             )}
-                          </Button>
-                          <Button type="submit" disabled={updateNvr.isPending} className="w-full sm:w-auto shadow-md shadow-primary/20">
-                            {updateNvr.isPending ? "Salvataggio..." : <><Save className="w-4 h-4 mr-2" /> Salva configurazione</>}
                           </Button>
                         </div>
                       </div>
