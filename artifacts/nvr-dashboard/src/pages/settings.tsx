@@ -186,10 +186,10 @@ export default function Settings() {
       setSyncResult({ online: data.online, camerasCount: data.camerasCount })
       queryClient.invalidateQueries({ queryKey: ['/api/nvr/cameras'] })
       if (data.online) {
-        toast({ title: `NVR connesso ✓ — ${data.camerasCount} telecamere sincronizzate` })
+        toast({ title: `NVR connesso ✓ — ${data.camerasCount} telecamere sincronizzate`, description: data.reason })
       } else {
         toast({
-          title: "NVR non raggiungibile",
+          title: "Collegamento NVR non riuscito",
           description: data.reason ?? "Controlla IP, porta API (80) e credenziali locali dell'NVR.",
           variant: "destructive",
         })
@@ -452,7 +452,7 @@ export default function Settings() {
                             ) : syncResult !== null ? (
                               syncResult.online
                                 ? <><Wifi className="w-4 h-4 mr-2 text-green-500" /> NVR connesso ✓</>
-                                : <><WifiOff className="w-4 h-4 mr-2 text-red-500" /> Non raggiungibile</>
+                                : <><WifiOff className="w-4 h-4 mr-2 text-red-500" /> Collegamento non riuscito</>
                             ) : (
                               <><RefreshCw className="w-4 h-4 mr-2" /> Sincronizza telecamere</>
                             )}
