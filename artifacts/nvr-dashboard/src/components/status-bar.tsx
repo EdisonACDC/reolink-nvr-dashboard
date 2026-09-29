@@ -13,7 +13,7 @@ export function StatusBar() {
 
   if (isLoading) {
     return (
-      <header className="h-16 border-b border-border/50 bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60 flex items-center justify-end px-6 gap-6 z-10 w-full">
+      <header className="nvr-status-bar border-b border-border/50 bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60 flex items-center justify-end px-6 gap-6 z-10 w-full">
         <Skeleton className="h-8 w-32" />
         <Skeleton className="h-8 w-48" />
         <Skeleton className="h-8 w-24" />
@@ -22,15 +22,15 @@ export function StatusBar() {
   }
 
   const isConnected = status?.connected ?? false
-  const diskPercentage = status ? (status.diskUsage / status.diskTotal) * 100 : 0
+  const diskPercentage = status && status.diskTotal > 0 ? (status.diskUsage / status.diskTotal) * 100 : 0
 
   return (
-    <header className="h-16 border-b border-border/50 bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60 flex items-center justify-between px-6 z-10 w-full shadow-sm">
+    <header className="nvr-status-bar border-b border-border/50 bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60 flex items-center justify-between px-6 z-10 w-full shadow-sm">
       
       <div className="flex items-center gap-4">
         <div className={`flex items-center gap-2 px-3 py-1.5 rounded-full border ${isConnected ? 'bg-success/10 border-success/20 text-success' : 'bg-destructive/10 border-destructive/20 text-destructive'}`}>
           {isConnected ? <Wifi className="w-4 h-4" /> : <WifiOff className="w-4 h-4" />}
-          <span className="text-xs font-semibold uppercase tracking-wider">{isConnected ? 'System Online' : 'Offline'}</span>
+          <span className="text-xs font-semibold uppercase tracking-wider">{isConnected ? 'NVR connesso' : 'Offline'}</span>
         </div>
         
         {status?.recordingActive && (
@@ -44,7 +44,7 @@ export function StatusBar() {
       <div className="flex items-center gap-6 text-sm">
         {status && (
           <>
-            <div className="flex flex-col gap-1.5 min-w-[200px]">
+            <div className="flex flex-col gap-1.5 nvr-storage-status">
               <div className="flex items-center justify-between text-xs text-muted-foreground">
                 <span className="flex items-center gap-1"><HardDrive className="w-3.5 h-3.5" /> Storage</span>
                 <span className="font-mono">{diskPercentage.toFixed(1)}%</span>
