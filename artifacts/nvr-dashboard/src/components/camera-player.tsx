@@ -14,15 +14,15 @@ export function CameraPlayer({ camera, className = "" }: CameraPlayerProps) {
   return (
     <div className={`relative flex flex-col bg-card rounded-xl overflow-hidden shadow-md shadow-black/20 border border-border/50 group ${className}`}>
       {/* Video Area */}
-      <div className="flex-1 relative bg-black min-h-[200px]">
-        {isOnline && camera.streamUrl ? (
+      <div className="nvr-camera-area">
+        {camera.streamUrl ? (
           <VideoPlayer src={camera.streamUrl} />
         ) : (
-          <VideoPlayer fallbackText={camera.name ? "Offline" : "Unconfigured"} />
+          <VideoPlayer fallbackText={camera.id > 0 ? "Flusso non configurato" : "Canale non configurato"} />
         )}
 
         {/* Overlays */}
-        <div className="absolute top-0 left-0 right-0 p-3 bg-gradient-to-b from-black/80 to-transparent flex justify-between items-start z-20 transition-opacity duration-300">
+        <div className="absolute top-0 left-0 right-0 p-3 bg-gradient-to-b from-black/80 to-transparent flex justify-between items-start z-20 pointer-events-none transition-opacity duration-300">
           <div className="flex items-center gap-2">
             <span className="text-white font-mono text-xs bg-black/50 px-2 py-1 rounded backdrop-blur-sm shadow-sm border border-white/10">
               CH{camera.channel.toString().padStart(2, '0')}
@@ -36,14 +36,14 @@ export function CameraPlayer({ camera, className = "" }: CameraPlayerProps) {
             {isRecording && (
               <div className="flex items-center gap-1.5 bg-black/50 px-2 py-1 rounded backdrop-blur-sm border border-destructive/30">
                 <div className="w-2 h-2 rounded-full bg-destructive animate-pulse" />
-                <span className="text-destructive font-bold text-[10px] tracking-widest uppercase">REC</span>
+                <span className="text-destructive font-bold text-[10px] tracking-widest uppercase">REC abilitata</span>
               </div>
             )}
             {!isOnline && (
               <Badge variant="destructive" className="bg-destructive/80 text-[10px] uppercase">Offline</Badge>
             )}
             {camera.motionDetection && isOnline && (
-              <Badge variant="outline" className="bg-warning/20 text-warning border-warning/30 text-[10px] uppercase">Motion</Badge>
+              <Badge variant="outline" className="bg-warning/20 text-warning border-warning/30 text-[10px] uppercase">Rilevamento abilitato</Badge>
             )}
           </div>
         </div>

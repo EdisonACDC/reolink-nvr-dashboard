@@ -213,3 +213,23 @@
     grid-template-columns: repeat(1, minmax(0, 1fr));
   }
 }
+
+.nvr-live-page { min-width: 0; min-height: 100%; }
+.nvr-live-toolbar { display: flex; justify-content: space-between; align-items: center; gap: 16px; margin-bottom: 24px; }
+.nvr-camera-list { min-width: 0; }
+.nvr-camera-area { position: relative; background: black; min-height: 280px; aspect-ratio: 16 / 9; }
+.nvr-video-player { position: absolute; inset: 0; background: black; overflow: hidden; }
+.nvr-video-element { width: 100%; height: 100%; object-fit: contain; }
+.nvr-video-message { position: absolute; inset: 0; z-index: 15; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 10px; padding: 75px 12px 14px; background: #090909ed; color: #ddd; text-align: center; font-size: 13px; overflow-y: auto; overflow-wrap: anywhere; }
+.nvr-video-retry { display: inline-flex; align-items: center; gap: 8px; padding: 8px 16px; border: 1px solid #666; border-radius: 8px; color: white; flex-shrink: 0; }
+.nvr-status-bar { min-height: 64px; flex-shrink: 0; }
+.nvr-storage-status { min-width: 160px; }
+@media (max-width: 767px) {
+  .nvr-live-toolbar { flex-direction: column; align-items: stretch; }
+  .nvr-live-toolbar > div:last-child { align-self: flex-start; max-width: 100%; }
+  .nvr-status-bar { flex-wrap: wrap; height: auto; gap: 12px; padding: 12px 12px 12px 48px; }
+  .nvr-status-bar > div { flex-wrap: wrap; gap: 10px; min-width: 0; max-width: 100%; }
+  .nvr-status-bar span { letter-spacing: normal; }
+  .nvr-storage-status { min-width: 100px; flex: 1; }
+  .nvr-camera-area { min-height: 290px; }
+}

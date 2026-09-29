@@ -1,3 +1,10 @@
+# 2.0.0-beta.6
+
+- Lettore sempre montato: Riprova riavvia il video dopo un errore.
+- HLS nativo preferito su iPhone; errori del backend visibili nella card.
+- Altezza video stabile e barra comandi adattata agli schermi piccoli.
+- Le etichette per canale indicano funzioni abilitate, non confermano una registrazione in corso.
+
 # 2.0.0-beta.5
 
 - Ogni login di verifica chiude la propria sessione con Logout.

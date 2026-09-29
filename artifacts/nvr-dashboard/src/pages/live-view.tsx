@@ -42,11 +42,11 @@ export default function LiveView() {
   }).slice(0, gridSize)
 
   return (
-    <div className="flex flex-col h-full bg-background p-4 md:p-6 overflow-hidden">
-      <div className="flex items-center justify-between mb-6">
+    <div className="nvr-live-page flex flex-col bg-background p-4 md:p-6">
+      <div className="nvr-live-toolbar">
         <div>
-          <h1 className="text-2xl font-bold tracking-tight text-foreground">Live View</h1>
-          <p className="text-sm text-muted-foreground mt-1">Real-time monitoring from configured channels</p>
+          <h1 className="text-2xl font-bold tracking-tight text-foreground">Telecamere live</h1>
+          <p className="text-sm text-muted-foreground mt-1">Video dei canali configurati</p>
         </div>
 
         <div className="flex items-center gap-2 bg-card p-1 rounded-lg border border-border/50 shadow-sm">
@@ -89,20 +89,20 @@ export default function LiveView() {
         </div>
       </div>
 
-      <div className="flex-1 overflow-auto rounded-xl">
+      <div className="nvr-camera-list rounded-xl">
         {isLoading ? (
-          <div className={`grid gap-4 h-full w-full camera-grid-${gridSize}`}>
+          <div className={`grid gap-4 w-full camera-grid-${gridSize}`}>
             {Array.from({ length: gridSize }).map((_, i) => (
               <Skeleton key={i} className="w-full h-full min-h-[200px] rounded-xl" />
             ))}
           </div>
         ) : (
-          <div className={`grid gap-4 h-full w-full camera-grid-${gridSize}`}>
+          <div className={`grid gap-4 w-full camera-grid-${gridSize}`}>
             {paddedCameras.map((camera) => (
               <CameraPlayer 
                 key={camera.id} 
                 camera={camera as any} 
-                className="w-full h-full"
+                className="w-full"
               />
             ))}
           </div>
