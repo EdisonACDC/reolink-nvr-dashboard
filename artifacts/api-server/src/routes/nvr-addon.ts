@@ -385,8 +385,8 @@ router.post("/nvr/cameras/:id/ptz", async (req, res): Promise<void> => {
   res.setHeader("Cache-Control", "no-store");
   try {
     if (typeof req.body?.action !== "string") throw new PtzError("Comando mancante.", 400);
-    await reolinkPtz.command(ptzTarget(req.params.id), req.body.action, req.body.speed ?? 8);
-    res.json({ ok: true });
+    const result = await reolinkPtz.command(ptzTarget(req.params.id), req.body.action, req.body.speed ?? 16, req.body.durationMs ?? 1000);
+    res.json({ ok: true, ...result });
   } catch (error) { res.status(error instanceof PtzError ? error.status : 500).json({ error: error instanceof PtzError ? error.message : "Comando non riuscito." }); }
 });
 

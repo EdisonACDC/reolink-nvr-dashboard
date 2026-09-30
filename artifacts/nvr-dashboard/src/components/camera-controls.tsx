@@ -8,7 +8,8 @@ export function CameraControls({ cameraId, telephoto, onLensChange }: { cameraId
   const [caps, setCaps] = useState<Capabilities | null>(null);
   const [loading, setLoading] = useState(false);
   const [busy, setBusy] = useState(false);
-  const [speed, setSpeed] = useState(8);
+  const [speed, setSpeed] = useState(16);
+  const [durationMs, setDurationMs] = useState(1000);
   const [error, setError] = useState("");
   const [message, setMessage] = useState("");
   const inFlight = useRef(false);
@@ -31,12 +32,16 @@ export function CameraControls({ cameraId, telephoto, onLensChange }: { cameraId
     if (!isStop && inFlight.current) return;
     if (!isStop) { inFlight.current = true; setBusy(true); }
     setError(""); setMessage("");
-    if (action.startsWith("Zoom") && caps?.telephoto) onLensChange(true);
     try {
-      const response = await fetch(endpoint, { method: "POST", credentials: "same-origin", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ action, speed }) });
+      const response = await fetch(endpoint, { method: "POST", credentials: "same-origin", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ action, speed, durationMs }) });
       const data = await response.json();
       if (!response.ok) throw new Error(data.error || "Comando non riuscito");
-      if (mounted.current) setMessage(isStop ? "STOP inviato" : action.startsWith("Zoom") ? "Zoom impostato" : "Movimento completato");
+      if (mounted.current) {
+        const feedback = data.movement === "changed" ? "Il NVR segnala una posizione diversa. La diretta può mostrarla con ritardo."
+          : data.movement === "unchanged" ? "Il NVR ha accettato il comando, ma la posizione letta non è cambiata. Prova 2 secondi o la direzione opposta."
+          : "Comando accettato e STOP inviato; il NVR non consente di verificare lo spostamento.";
+        setMessage(isStop ? "STOP inviato" : action.startsWith("Zoom") ? "Comando zoom accettato" : `${data.channel ? `Canale ${data.channel}: ` : ""}${feedback}`);
+      }
     } catch (error) {
       if (mounted.current) setError(error instanceof Error ? error.message : "Comando non riuscito");
     } finally {
@@ -57,7 +62,7 @@ export function CameraControls({ cameraId, telephoto, onLensChange }: { cameraId
       {!loading && caps && <>
         {caps.telephoto && <div className="flex gap-2" aria-label="Lente della telecamera">
           <button type="button" aria-pressed={!telephoto} className={`min-h-11 flex-1 rounded-lg border px-2 text-sm ${!telephoto ? "bg-primary text-primary-foreground" : "bg-secondary"}`} onClick={() => onLensChange(false)}>Panoramica</button>
-          <button type="button" aria-pressed={telephoto} className={`min-h-11 flex-1 rounded-lg border px-2 text-sm ${telephoto ? "bg-primary text-primary-foreground" : "bg-secondary"}`} onClick={() => onLensChange(true)}>Lente zoom</button>
+          <button type="button" aria-pressed={telephoto} className={`min-h-11 flex-1 rounded-lg border px-2 text-sm ${telephoto ? "bg-primary text-primary-foreground" : "bg-secondary"}`} onClick={() => onLensChange(true)}>Seconda lente (zoom)</button>
         </div>}
         {(caps.pan || caps.tilt) && <>
           <div className="mx-auto grid max-w-[240px] grid-cols-3 gap-2">
@@ -68,12 +73,17 @@ export function CameraControls({ cameraId, telephoto, onLensChange }: { cameraId
               {Icon ? <Icon size={22} /> : "STOP"}
             </button>)}
           </div>
-          <p className="text-center text-xs text-muted-foreground">Tocca una freccia per un breve movimento. Arresto automatico.</p>
+          <p className="text-center text-xs text-muted-foreground">Tocca una freccia. Il movimento si arresta automaticamente dopo la durata scelta.</p>
           {caps.speed && <label className="flex items-center gap-3 text-sm">Velocità
             <select aria-label="Velocità movimento" value={speed} disabled={busy} onChange={event => setSpeed(Number(event.target.value))} className="min-h-11 flex-1 rounded-lg border bg-background px-3">
-              <option value={4}>Lenta</option><option value={8}>Normale</option><option value={16}>Veloce</option>
+              <option value={8}>Lenta</option><option value={16}>Normale</option><option value={32}>Veloce</option>
             </select>
           </label>}
+          <label className="flex items-center gap-3 text-sm">Durata
+            <select aria-label="Durata movimento" value={durationMs} disabled={busy} onChange={event => setDurationMs(Number(event.target.value))} className="min-h-11 flex-1 rounded-lg border bg-background px-3">
+              <option value={500}>0,5 secondi</option><option value={1000}>1 secondo</option><option value={2000}>2 secondi</option>
+            </select>
+          </label>
         </>}
         {caps.zoom && <div className="flex items-center justify-center gap-3">
           <button type="button" aria-label="Riduci zoom" disabled={busy} onClick={() => void command("ZoomOut")} className="flex min-h-12 min-w-12 items-center justify-center rounded-lg border bg-secondary disabled:opacity-40"><Minus /></button>
@@ -81,7 +91,7 @@ export function CameraControls({ cameraId, telephoto, onLensChange }: { cameraId
           <button type="button" aria-label="Aumenta zoom" disabled={busy} onClick={() => void command("ZoomIn")} className="flex min-h-12 min-w-12 items-center justify-center rounded-lg border bg-secondary disabled:opacity-40"><Plus /></button>
         </div>}
         {!caps.pan && !caps.tilt && !caps.zoom && <p className="text-sm text-muted-foreground">Questa telecamera non espone comandi di movimento o zoom.</p>}
-        {caps.telephoto && caps.zoom && <p className="text-xs text-muted-foreground">Lo zoom agisce sulla seconda lente: la vista passa automaticamente a “Lente zoom”.</p>}
+        {caps.telephoto && caps.zoom && <p className="text-xs text-muted-foreground">Lo zoom agisce sulla seconda lente della TrackMix. Seleziona “Seconda lente (zoom)” per vederlo: + e − non cambiano la vista.</p>}
       </>}
       <div aria-live="polite" className="text-sm">{busy ? "Invio comando…" : message}</div>
       {error && <p role="alert" className="text-sm text-destructive">{error}</p>}

@@ -4,6 +4,7 @@
 import { createHash } from "node:crypto";
 export interface PtzTarget { host: string; port: number; username: string; password: string; channel: number }
 export interface PtzCapabilities { pan: boolean; tilt: boolean; speed: boolean; telephoto: boolean; zoom: { min: number; max: number; position: number } | null }
+export interface PtzResult { movement: "changed" | "unchanged" | "unverified"; channel: number; before?: { pan: number; tilt: number }; after?: { pan: number; tilt: number } }
 export class PtzError extends Error {
   status: number;
   constructor(message: string, status = 502) { super(message); this.status = status; }
@@ -61,6 +62,14 @@ export function createPtzController(request: typeof fetch = fetch, pause = (ms: 
       }
     }
   }
+  async function readPosition(t: PtzTarget, token: string) {
+    try {
+      const data = await call(t, "GetPtzCurPos", { PtzCurPos: { channel: t.channel } }, token);
+      const pos = data.value?.PtzCurPos;
+      if (Number.isFinite(pos?.Ppos) && Number.isFinite(pos?.Tpos)) return { pan: pos.Ppos as number, tilt: pos.Tpos as number };
+    } catch { /* Some firmware does not report position; never block movement on this. */ }
+    return undefined;
+  }
   async function readZoom(t: PtzTarget, token: string) {
     const data = await call(t, "GetZoomFocus", { channel: t.channel }, token, 1);
     const position = data.value?.ZoomFocus?.zoom?.pos;
@@ -87,10 +96,11 @@ export function createPtzController(request: typeof fetch = fetch, pause = (ms: 
   }
   return {
     capabilities: (t: PtzTarget) => session(t, state => readCapabilities(t, state)),
-    async command(t: PtzTarget, action: string, speed = 8): Promise<void> {
+    async command(t: PtzTarget, action: string, speed = 16, durationMs = 1000): Promise<PtzResult | undefined> {
       if (!Number.isInteger(t.channel) || t.channel < 0 || !t.host || !t.username) throw new PtzError("NVR o canale non configurato.", 400);
       if (![...directions, "Stop", "ZoomIn", "ZoomOut"].includes(action)) throw new PtzError("Comando non valido.", 400);
       if (!Number.isInteger(speed) || speed < 1 || speed > 32) throw new PtzError("Velocità non valida.", 400);
+      if (![500, 1000, 2000].includes(durationMs)) throw new PtzError("Durata non valida.", 400);
       if (action === "Stop") {
         const running = active.get(deviceKey(t));
         if (running && running.target.channel === t.channel) { await stop(running); return; }
@@ -102,7 +112,7 @@ export function createPtzController(request: typeof fetch = fetch, pause = (ms: 
         finally { try { await call(t, "Logout", {}, token); } catch {} }
         return;
       }
-      await session(t, async state => {
+      return await session(t, async state => {
         const caps = await readCapabilities(t, state);
         if (state.stopped) return;
         if (action === "ZoomIn" || action === "ZoomOut") {
@@ -119,10 +129,16 @@ export function createPtzController(request: typeof fetch = fetch, pause = (ms: 
           return;
         }
         if ((/Left|Right/.test(action) && !caps.pan) || (/Up|Down/.test(action) && !caps.tilt)) throw new PtzError("Movimento non supportato da questa telecamera.", 422);
+        const before = await readPosition(t, state.token!);
+        if (state.stopped) return;
         // Mark before sending: an ambiguous timeout must still trigger Stop.
         state.moving = true;
         await call(t, "PtzCtrl", { channel: t.channel, op: action, ...(caps.speed ? { speed } : {}) }, state.token);
-        if (!state.stopped) await pause(350);
+        if (!state.stopped) await pause(durationMs);
+        try { await stop(state); } finally { state.moving = false; }
+        const after = await readPosition(t, state.token!);
+        const movement = !before || !after ? "unverified" : before.pan !== after.pan || before.tilt !== after.tilt ? "changed" : "unchanged";
+        return { movement, channel: t.channel + 1, before, after } as PtzResult;
       });
     },
   };

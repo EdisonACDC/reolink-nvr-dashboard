@@ -15,6 +15,7 @@ class NVR(http.server.BaseHTTPRequestHandler):
    if cmd=='GetNetPort':value={'NetPort':{'rtspPort':554}}
    if cmd=='GetRtspUrl':value={'rtspUrl':{'channel':0,'mainStream':'rtsp://fake:fake@127.0.0.1:554/Preview_01_main','subStream':'rtsp://fake:fake@127.0.0.1:554/Preview_01_sub'}}
    if cmd=='GetAbility':value={'Ability':{'abilityChn':[{'ptzType':{'ver':3},'supportPtzSpeed':{'ver':1},'supportDigitalZoom':{'ver':1},'supportAutoTrackStream':{'ver':1}}]}}
+   if cmd=='GetPtzCurPos':value={'PtzCurPos':{'channel':0,'Ppos':100,'Tpos':50}}
    if cmd=='GetZoomFocus':value={'ZoomFocus':{'channel':0,'zoom':{'pos':16}}}
    row={'cmd':cmd,'code':0,'value':value}
    if cmd=='GetZoomFocus':row['range']={'ZoomFocus':{'zoom':{'pos':{'min':0,'max':32}}}}
@@ -42,7 +43,8 @@ with tempfile.TemporaryDirectory() as tmp:
   assert request('/recordings')==[]
   endpoint='/nvr/cameras/'+str(camera['id'])+'/ptz'
   caps=request(endpoint);assert caps['pan'] and caps['tilt'] and caps['telephoto']
-  assert request(endpoint,{'action':'Left','speed':8},'POST')['ok']
+  result=request(endpoint,{'action':'Left','speed':8,'durationMs':500},'POST')
+  assert result['ok'] and result['movement']=='unchanged' and result['channel']==1,result
   moves=[entry['param'] for entry in commands if entry['cmd']=='PtzCtrl']
   assert moves==[{'channel':0,'op':'Left','speed':8},{'channel':0,'op':'Stop'}],moves
   assert request(endpoint,{'action':'ZoomOut'},'POST')['ok']
