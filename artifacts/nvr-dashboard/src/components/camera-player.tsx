@@ -9,7 +9,8 @@ interface CameraPlayerProps {
 
 export function CameraPlayer({ camera, className = "" }: CameraPlayerProps) {
   const isOnline = camera.status === "online"
-  const isRecording = camera.recordingEnabled && isOnline
+  const recordingStatus = (camera as Camera & { recordingStatus?: string }).recordingStatus
+  const isRecording = recordingStatus === "recording"
 
   return (
     <div className={`relative flex flex-col bg-card rounded-xl overflow-hidden shadow-md shadow-black/20 border border-border/50 group ${className}`}>
@@ -36,8 +37,13 @@ export function CameraPlayer({ camera, className = "" }: CameraPlayerProps) {
             {isRecording && (
               <div className="flex items-center gap-1.5 bg-black/50 px-2 py-1 rounded backdrop-blur-sm border border-destructive/30">
                 <div className="w-2 h-2 rounded-full bg-destructive animate-pulse" />
-                <span className="text-destructive font-bold text-[10px] tracking-widest uppercase">REC abilitata</span>
+                <span className="text-destructive font-bold text-[10px] tracking-widest uppercase">REC attiva</span>
               </div>
+            )}
+            {camera.recordingEnabled && !isRecording && (
+              <Badge variant="outline" className="bg-black/70 text-white text-[10px]">
+                {recordingStatus === "error" ? "REC: errore" : recordingStatus === "off" ? "REC sospesa" : "REC: in attesa"}
+              </Badge>
             )}
             {!isOnline && (
               <Badge variant="destructive" className="bg-destructive/80 text-[10px] uppercase">Offline</Badge>
@@ -54,3 +60,4 @@ export function CameraPlayer({ camera, className = "" }: CameraPlayerProps) {
     </div>
   )
 }
+

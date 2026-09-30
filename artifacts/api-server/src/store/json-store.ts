@@ -26,6 +26,9 @@ export interface Camera {
   motionDetection: boolean;
   resolution: string | null;
   sourceType?: "standalone" | "reolink_nvr";
+  nvrOnline?: boolean;
+  mainRtspPath?: string;
+  subRtspPath?: string;
   rtspUrl?: string;
   subStreamUrl?: string;
   username?: string;
@@ -197,3 +200,4 @@ export const jsonStore = {
     return recs;
   },
 };
+

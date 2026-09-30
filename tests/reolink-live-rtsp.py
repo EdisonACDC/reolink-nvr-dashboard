@@ -56,7 +56,7 @@ class Fixture:
                 if method == 'DESCRIBE':
                     body = 'v=0\r\no=- 0 0 IN IP4 127.0.0.1\r\ns=Fixture\r\nc=IN IP4 127.0.0.1\r\nt=0 0\r\nm=video 0 RTP/AVP 33\r\na=rtpmap:33 MP2T/90000\r\na=control:track1\r\n'
                     extra = 'Content-Type: application/sdp\r\n'
-                    if self.mode == 'missing':
+                    if self.mode == 'missing' or self.mode == 'path-fallback' and '/h264Preview_' in lines[0]:
                         status, body = '404 Stream Not Found', ''
                 if method == 'SETUP':
                     transport = headers['Transport']
@@ -127,7 +127,10 @@ const missing = process.argv[2] === 'missing';
       const playlist = fs.readFileSync(result.filePath, 'utf8');
       assert.match(playlist, /#EXTINF/);
       const segment = playlist.split('\n').find(x => x.endsWith('.ts'));
-      assert.equal(poll(sources, 99123, segment).status, 'ready');
+      const videoSegment = poll(sources, 99123, segment);
+      assert.equal(videoSegment.status, 'ready');
+      const probe = JSON.parse(require('node:child_process').execFileSync('ffprobe', ['-v','error','-select_streams','v:0','-show_entries','stream=codec_name','-of','json',videoSegment.filePath]));
+      assert.equal(probe.streams[0].codec_name, 'h264');
       assert.equal(poll(sources, 99123, 'segment-999999.ts').status, 'missing');
       assert.equal(poll(sources, 99123, 'index.m3u8').filePath, result.filePath);
     }
@@ -143,8 +146,10 @@ def main():
         with tempfile.TemporaryDirectory() as directory:
             media = Path(directory) / 'video.ts'
             subprocess.run(['ffmpeg', '-v', 'error', '-f', 'lavfi', '-i', 'testsrc2=size=320x180:rate=10', '-t', '30', '-c:v', 'libx264', '-preset', 'ultrafast', '-tune', 'zerolatency', '-g', '10', '-f', 'mpegts', '-y', str(media)], check=True)
-            for mode, connections in [('slow', 1), ('udp', 2), ('udp-timeout', 2), ('missing', 2)]:
-                fixture = Fixture(media.read_bytes(), mode)
+            hevc = Path(directory) / 'hevc.ts'
+            subprocess.run(['ffmpeg','-v','error','-f','lavfi','-i','testsrc2=size=320x180:rate=10','-t','30','-c:v','libx265','-preset','ultrafast','-x265-params','pools=1:frame-threads=1:log-level=error','-g','10','-f','mpegts','-y',str(hevc)],check=True)
+            for mode, connections in [('hevc', 1), ('slow', 1), ('udp', 2), ('udp-timeout', 2), ('missing', 2)]:
+                fixture = Fixture((hevc if mode == 'hevc' else media).read_bytes(), mode)
                 try:
                     subprocess.run(['node', '-e', NODE, f'rtsp://test:secret-password@127.0.0.1:{fixture.port}/Preview_01_sub', mode], cwd=API, env={**os.environ, 'NODE_ENV':'production', 'LOG_LEVEL':'silent'}, check=True, timeout=45)
                     assert fixture.connections == connections, (mode, fixture.connections)
@@ -156,3 +161,4 @@ def main():
 
 if __name__ == '__main__':
     main()
+

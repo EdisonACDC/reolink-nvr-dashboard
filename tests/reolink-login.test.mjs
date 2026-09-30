@@ -78,3 +78,37 @@ test('network and malformed response errors do not claim a credential failure', 
     assert.doesNotMatch(result.reason, /password|credenziali/);
   }
 });
+
+
+test('discovers actual channels, advertised RTSP paths and port without retaining credentials', async () => {
+  const commands = [];
+  const login = createReolinkLogin(async (url, options) => {
+    const body = JSON.parse(options.body);
+    commands.push(...body.map(item => item.cmd));
+    if (url.includes('cmd=Login')) return json(success);
+    if (url.includes('cmd=Logout')) return json([{code:0}]);
+    if (body[0].cmd === 'GetChannelstatus') return json([
+      {cmd:'GetChannelstatus',code:0,value:{status:[{channel:0,name:'Front',online:1},{channel:1,name:'Empty',online:0}]}},
+      {cmd:'GetNetPort',code:0,value:{NetPort:{rtspPort:8554}}},
+    ]);
+    return json([{cmd:'GetRtspUrl',code:0,value:{rtspUrl:{channel:0,mainStream:'rtsp://admin:secret@device:8554/Preview_01_main',subStream:'rtsp://admin:secret@device:8554/Preview_01_sub'}}}]);
+  }, Date.now, true);
+  const result = await login('nvr',80,'admin','secret');
+  assert.equal(result.rtspPort,8554);
+  assert.equal(result.channels.length,2);
+  assert.equal(result.channels[0].mainPath,'/Preview_01_main');
+  assert.equal(result.channels[1].online,false);
+  assert.ok(!JSON.stringify(result).includes('secret'));
+  assert.deepEqual(commands,['Login','GetChannelstatus','GetNetPort','GetRtspUrl','Logout']);
+});
+
+test('unsupported discovery commands preserve successful login and logout', async () => {
+  let logout = false;
+  const login = createReolinkLogin(async url => {
+    if (url.includes('cmd=Login')) return json(success);
+    if (url.includes('cmd=Logout')) { logout = true; return json([{code:0}]); }
+    throw new Error('unsupported');
+  }, Date.now, true);
+  assert.equal((await login('nvr',80,'admin','secret')).online,true);
+  assert.ok(logout);
+});

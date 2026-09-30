@@ -1,6 +1,6 @@
 #!/bin/sh
 
-echo "[NVR] Starting Reolink NVR Dashboard v2.0.0-beta.8..."
+echo "[NVR] Starting Reolink NVR Dashboard v2.0.0-beta.9..."
 
 # Decompress pre-built server bundle if needed
 if [ -f /app/artifacts/api-server/dist/index.mjs.gz ] && [ ! -f /app/artifacts/api-server/dist/index.mjs ]; then
@@ -31,3 +31,4 @@ export ADDON_DB_PATH=/data/nvr-data.json
 
 echo "[NVR] Starting web server on port ${PORT}..."
 exec node /app/artifacts/api-server/dist/index.mjs
+
