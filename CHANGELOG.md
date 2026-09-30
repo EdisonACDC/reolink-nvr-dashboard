@@ -1,3 +1,8 @@
+# 2.0.0-beta.7
+
+- Corretto il timeout RTSP di FFmpeg per video live, registrazioni e istantanee: eliminato l’errore «Option rw_timeout not found».
+- Contenuto dei messaggi video mantenuto entro la larghezza della card su iPhone.
+
 # 2.0.0-beta.6
 
 - Lettore sempre montato: Riprova riavvia il video dopo un errore.

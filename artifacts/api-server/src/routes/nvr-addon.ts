@@ -182,7 +182,7 @@ async function captureRtspSnapshot(sourceUrl: string): Promise<Buffer> {
   return await new Promise((resolve, reject) => {
     const child = spawn("ffmpeg", [
       "-hide_banner", "-loglevel", "error",
-      "-rtsp_transport", "tcp", "-rw_timeout", "8000000",
+      "-rtsp_transport", "tcp", "-timeout", "8000000",
       "-i", sourceUrl,
       "-frames:v", "1", "-f", "image2", "-vcodec", "mjpeg", "pipe:1",
     ], { stdio: ["ignore", "pipe", "pipe"] });

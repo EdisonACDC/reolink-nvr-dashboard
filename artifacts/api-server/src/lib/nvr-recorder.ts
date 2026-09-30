@@ -88,7 +88,7 @@ function startRecorder(camera: Camera): void {
   fs.mkdirSync(outputDir, { recursive: true });
   const output = path.join(outputDir, "%Y-%m-%d_%H-%M-%S.mp4");
   const inputArgs = input.startsWith("rtsp://") || input.startsWith("rtsps://")
-    ? ["-rtsp_transport", "tcp", "-rw_timeout", "10000000", "-i", input]
+    ? ["-rtsp_transport", "tcp", "-timeout", "10000000", "-i", input]
     : ["-re", "-stream_loop", "-1", "-i", input];
   const args = [
     "-hide_banner", "-loglevel", "warning",

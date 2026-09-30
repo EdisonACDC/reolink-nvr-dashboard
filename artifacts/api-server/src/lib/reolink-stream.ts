@@ -73,7 +73,7 @@ function startStream(
     "-hide_banner",
     "-loglevel", "warning",
     "-rtsp_transport", "tcp",
-    "-rw_timeout", "7000000",
+    "-timeout", "7000000",
     "-fflags", "+genpts+discardcorrupt",
     "-use_wallclock_as_timestamps", "1",
     "-avoid_negative_ts", "make_zero",
