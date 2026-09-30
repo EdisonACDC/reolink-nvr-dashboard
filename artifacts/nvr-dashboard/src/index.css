@@ -239,3 +239,7 @@
 @media (max-width: 767px) {
   .nvr-camera-area { aspect-ratio: auto; height: 290px; }
 }
+
+.nvr-video-details { width: 100%; max-height: 100px; overflow: auto; font-size: 12px; }
+.nvr-video-details summary { cursor: pointer; }
+.nvr-video-details p { margin-top: 8px; white-space: normal; overflow-wrap: anywhere; }

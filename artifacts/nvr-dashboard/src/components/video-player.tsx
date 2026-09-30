@@ -42,10 +42,10 @@ export function VideoPlayer({
     let mediaRecoveryAttempted = false;
     const startupTimer = window.setTimeout(() => {
       controller.abort();
-      setDetail("Il video non è partito entro 35 secondi. Premi Riprova.");
+      setDetail("Il video non è partito entro 120 secondi. Premi Riprova.");
       setError(true);
       setLoading(false);
-    }, 35_000);
+    }, 120_000);
 
     const markReady = () => {
       if (disposed || controller.signal.aborted) return;
@@ -67,11 +67,20 @@ export function VideoPlayer({
     const start = async () => {
       try {
         if (src.includes(".m3u8")) {
-          const response = await fetch(streamUrl, {
-            signal: controller.signal,
-            cache: "no-store",
-            credentials: "same-origin",
-          });
+          let response: Response;
+          while (true) {
+            response = await fetch(streamUrl, {
+              signal: controller.signal,
+              cache: "no-store",
+              credentials: "same-origin",
+            });
+            if (response.status !== 202) break;
+            const progress = await response.json();
+            if (disposed || controller.signal.aborted) return;
+            setDetail(progress.message || "Avvio video…");
+            await new Promise((resolve) => window.setTimeout(resolve, 1000));
+            if (disposed || controller.signal.aborted) return;
+          }
           if (!response.ok) {
             let message = `Flusso non disponibile (HTTP ${response.status}).`;
             try {
@@ -79,7 +88,7 @@ export function VideoPlayer({
               message = [data.error || message, data.detail]
                 .filter(Boolean)
                 .join(" ")
-                .slice(0, 700);
+                .slice(0, 2500);
             } catch {}
             throw new Error(message);
           }
@@ -176,18 +185,19 @@ export function VideoPlayer({
       {src && loading && !error && (
         <div className="nvr-video-message">
           <Loader2 className="w-8 h-8 text-primary animate-spin" />
-          <span>Avvio video…</span>
+          <span>{detail || "Avvio video…"}</span>
         </div>
       )}
       {(!src || error) && (
         <div className="nvr-video-message" role={error ? "alert" : "status"}>
           <VideoOff className="w-8 h-8 opacity-50" />
-          <span>
-            {error
-              ? detail ||
-                "Video non disponibile. Verifica RTSP e il codec H.264 del sub-stream."
-              : fallbackText}
-          </span>
+          <span>{error ? "Video non disponibile" : fallbackText}</span>
+          {error && detail && (
+            <details className="nvr-video-details">
+              <summary>Dettagli dell’errore</summary>
+              <p>{detail}</p>
+            </details>
+          )}
           {src && (
             <button
               type="button"
