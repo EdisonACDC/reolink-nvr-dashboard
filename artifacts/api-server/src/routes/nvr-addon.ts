@@ -1,3 +1,4 @@
+import { reolinkPtz, PtzError, type PtzTarget } from "../lib/reolink-ptz";
 import { Router, type IRouter } from "express";
 import { spawn } from "node:child_process";
 import { jsonStore } from "../store/json-store";
@@ -365,6 +366,30 @@ router.delete("/nvr/cameras/:id", (req, res): void => {
   res.sendStatus(204);
 });
 
+function ptzTarget(rawId: unknown): PtzTarget {
+  const id = Number(rawId);
+  if (!Number.isInteger(id) || id < 1) throw new PtzError("Telecamera non valida.", 400);
+  const camera = jsonStore.getCameraById(id);
+  const config = jsonStore.getNvrConfig();
+  if (!camera || !config) throw new PtzError("Telecamera non trovata.", 404);
+  if (camera.sourceType === "standalone" || camera.rtspUrl) throw new PtzError("Questi comandi richiedono una telecamera collegata al NVR Reolink configurato.", 422);
+  if (camera.nvrOnline === false) throw new PtzError("Telecamera non collegata al NVR.", 422);
+  return { host: config.host, port: config.port, username: config.username, password: config.password, channel: camera.channel - 1 };
+}
+router.get("/nvr/cameras/:id/ptz", async (req, res): Promise<void> => {
+  res.setHeader("Cache-Control", "no-store");
+  try { res.json(await reolinkPtz.capabilities(ptzTarget(req.params.id))); }
+  catch (error) { res.status(error instanceof PtzError ? error.status : 500).json({ error: error instanceof PtzError ? error.message : "Controllo telecamera non disponibile." }); }
+});
+router.post("/nvr/cameras/:id/ptz", async (req, res): Promise<void> => {
+  res.setHeader("Cache-Control", "no-store");
+  try {
+    if (typeof req.body?.action !== "string") throw new PtzError("Comando mancante.", 400);
+    await reolinkPtz.command(ptzTarget(req.params.id), req.body.action, req.body.speed ?? 8);
+    res.json({ ok: true });
+  } catch (error) { res.status(error instanceof PtzError ? error.status : 500).json({ error: error instanceof PtzError ? error.message : "Comando non riuscito." }); }
+});
+
 router.get("/nvr/cameras/:id/snapshot", (req, res): void => {
   const rawId = Array.isArray(req.params.id) ? req.params.id[0] : req.params.id;
   const params = GetCameraSnapshotParams.safeParse({ id: parseInt(rawId, 10) });
@@ -435,7 +460,7 @@ router.get("/nvr/cameras/:id/snapshot/image", async (req, res): Promise<void> =>
 });
 
 // Il sub-stream viene normalizzato in H.264/HLS per i lettori mobili.
-router.get("/stream/camera/:channel/:filename", async (req, res): Promise<void> => {
+router.get(["/stream/camera/:channel/:filename", "/stream/telephoto/:channel/:filename"], async (req, res): Promise<void> => {
   const config = getOrCreateNvrConfig();
   const rawChannel = Array.isArray(req.params.channel) ? req.params.channel[0] : req.params.channel;
   const rawFilename = Array.isArray(req.params.filename) ? req.params.filename[0] : req.params.filename;
@@ -451,13 +476,14 @@ router.get("/stream/camera/:channel/:filename", async (req, res): Promise<void> 
     res.status(503).json({ error: "Nessuna telecamera collegata a questo canale NVR. Premi Sincronizza nelle impostazioni dopo averla collegata." });
     return;
   }
-  const sources = cameraRtspUrls(camera, config, "sub");
+  const telephoto = req.path.startsWith("/stream/telephoto/");
+  const sources = cameraRtspUrls(camera, config, telephoto ? "autotrack" : "sub");
   if (sources.length === 0) {
     res.status(503).json({ error: "Configura il flusso RTSP della telecamera" });
     return;
   }
 
-  const stream = pollReolinkLive(sources, camera.id, filename);
+  const stream = pollReolinkLive(sources, telephoto ? -camera.id : camera.id, filename);
   res.setHeader("Cache-Control", "no-store");
   if (stream.status === "starting") {
     res.setHeader("Retry-After", "1");

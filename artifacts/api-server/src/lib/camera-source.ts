@@ -19,7 +19,7 @@ function addCredentials(rawUrl: string, username?: string, password?: string): s
 export function cameraRtspUrl(
   camera: Camera,
   config: NvrConfig,
-  quality: "main" | "sub" = "main",
+  quality: "main" | "sub" | "autotrack" = "main",
 ): string {
   if (camera.sourceType === "standalone" || camera.rtspUrl) {
     const selected = quality === "sub" && camera.subStreamUrl
@@ -34,7 +34,7 @@ export function cameraRtspUrl(
 export function cameraRtspUrls(
   camera: Camera,
   config: NvrConfig,
-  quality: "main" | "sub" = "main",
+  quality: "main" | "sub" | "autotrack" = "main",
 ): string[] {
   if (camera.sourceType === "standalone" || camera.rtspUrl) {
     const selected = quality === "sub" && camera.subStreamUrl
@@ -51,6 +51,11 @@ export function cameraRtspUrls(
   const prefix = `rtsp://${username}:${password}@${cleanHost(config.host)}:${config.rtspPort}`;
 
   // Manteniamo entrambi i percorsi Reolink, per flussi principali e secondari.
+  if (quality === "autotrack") return [
+    `${prefix}/Preview_${channel}_autotrack`,
+    `${prefix}/h265Preview_${channel}_autotrack`,
+    `${prefix}/h264Preview_${channel}_autotrack`,
+  ];
   const advertised = quality === "main" ? camera.mainRtspPath : camera.subRtspPath;
   return [...new Set([
     ...(advertised?.startsWith("/") ? [`${prefix}${advertised}`] : []),

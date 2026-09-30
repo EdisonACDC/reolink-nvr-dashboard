@@ -1,3 +1,11 @@
+## 2.0.0-beta.10
+
+- Pannello “Controlla telecamera” sotto ogni diretta: movimento in otto direzioni, STOP, velocità e zoom +/− per i canali NVR Reolink compatibili.
+- Rilevamento delle capacità del canale e dei limiti dello zoom. Le TrackMix possono passare dalla panoramica alla lente zoom (flusso autotrack).
+- Ogni tocco invia un breve movimento e STOP dal server, anche se il telefono chiude la pagina. Comandi concorrenti rifiutati; STOP ha priorità. Sessioni chiuse dopo i comandi e messaggi espliciti se il NVR non conferma l’arresto.
+- Zoom assoluto limitato al campo dichiarato dalla telecamera. Comandi non supportati nascosti; credenziali conservate sul server.
+- Pulsanti adatti al telefono e controlli video a schermo intero. Registrazione e flusso principale invariati.
+
 ## 2.0.0-beta.9
 
 - Legge canali presenti, porta RTSP e percorsi video dichiarati dall’NVR, senza conservare le credenziali restituite dal dispositivo. I comandi non supportati mantengono i percorsi alternativi.

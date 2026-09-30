@@ -1,3 +1,5 @@
+import { useState } from "react"
+import { CameraControls } from "./camera-controls"
 import type { Camera } from "@workspace/api-client-react"
 import { VideoPlayer } from "./video-player"
 import { Badge } from "@/components/ui/badge"
@@ -8,6 +10,7 @@ interface CameraPlayerProps {
 }
 
 export function CameraPlayer({ camera, className = "" }: CameraPlayerProps) {
+  const [telephoto, setTelephoto] = useState(false)
   const isOnline = camera.status === "online"
   const recordingStatus = (camera as Camera & { recordingStatus?: string }).recordingStatus
   const isRecording = recordingStatus === "recording"
@@ -17,7 +20,7 @@ export function CameraPlayer({ camera, className = "" }: CameraPlayerProps) {
       {/* Video Area */}
       <div className="nvr-camera-area">
         {camera.streamUrl ? (
-          <VideoPlayer src={camera.streamUrl} />
+          <VideoPlayer src={telephoto ? `./api/stream/telephoto/${camera.id}/index.m3u8` : camera.streamUrl} controls />
         ) : (
           <VideoPlayer fallbackText={camera.id > 0 ? "Flusso non configurato" : "Canale non configurato"} />
         )}
@@ -57,6 +60,7 @@ export function CameraPlayer({ camera, className = "" }: CameraPlayerProps) {
         {/* Play overlay hover effect (for future full-screen click) */}
         <div className="absolute inset-0 bg-black/0 group-hover:bg-primary/5 transition-colors duration-300 pointer-events-none z-10" />
       </div>
+      {camera.id > 0 && <CameraControls cameraId={camera.id} telephoto={telephoto} onLensChange={setTelephoto} />}
     </div>
   )
 }
