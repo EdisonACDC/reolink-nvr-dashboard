@@ -1,3 +1,9 @@
+## 2.0.0-beta.11
+
+- Durata delle frecce regolabile a 0,5 / 1 / 2 secondi, con velocità predefinita 16 e STOP automatico. Il precedente impulso era di 350 ms; la causa del mancato movimento sul dispositivo reale resta da verificare.
+- Lettura della posizione prima e dopo il comando, quando supportata: messaggi distinti per posizione cambiata, invariata o non verificabile. STOP e chiusura sessione restano garantiti anche in caso di errore.
+- Zoom +/− non cambia più automaticamente la vista. Il selettore identifica esplicitamente la seconda lente.
+
 ## 2.0.0-beta.10
 
 - Pannello “Controlla telecamera” sotto ogni diretta: movimento in otto direzioni, STOP, velocità e zoom +/− per i canali NVR Reolink compatibili.
