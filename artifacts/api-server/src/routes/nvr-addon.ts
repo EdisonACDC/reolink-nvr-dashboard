@@ -12,8 +12,7 @@ import {
   updateStorageConfig,
 } from "../lib/nvr-recorder";
 import {
-  getReolinkStreamFile,
-  waitForStreamFile,
+  pollReolinkLive,
 } from "../lib/reolink-stream";
 import {
   GetNvrConfigResponse,
@@ -35,7 +34,6 @@ import {
 import { reolinkLogin } from "../lib/reolink-login";
 
 const router: IRouter = Router();
-const preferredLiveSources = new Map<number, string>();
 
 interface CameraSourceFields {
   sourceType?: "standalone" | "reolink_nvr";
@@ -442,39 +440,25 @@ router.get("/stream/camera/:channel/:filename", async (req, res): Promise<void> 
     return;
   }
 
-  const preferred = preferredLiveSources.get(camera.id);
-  const orderedSources = preferred && sources.includes(preferred)
-    ? [preferred, ...sources.filter((source) => source !== preferred)]
-    : sources;
-  const sourcesToTry = filename === "index.m3u8"
-    ? orderedSources
-    : orderedSources.slice(0, 1);
-  const errors: string[] = [];
-
-  for (const sourceUrl of sourcesToTry) {
-    const { filePath, state } = getReolinkStreamFile({ sourceUrl }, camera.id, filename);
-    const available = filename === "index.m3u8"
-      ? await waitForStreamFile(filePath, 8_000)
-      : await waitForStreamFile(filePath, 3_000);
-
-    if (available) {
-      preferredLiveSources.set(camera.id, sourceUrl);
-      res.setHeader(
-        "Content-Type",
-        filename.endsWith(".m3u8") ? "application/vnd.apple.mpegurl" : "video/mp2t",
-      );
-      res.setHeader("Cache-Control", filename.endsWith(".m3u8") ? "no-store" : "public, max-age=30");
-      res.sendFile(filePath);
-      return;
-    }
-
-    errors.push(state.lastError.slice(-500));
+  const stream = pollReolinkLive(sources, camera.id, filename);
+  res.setHeader("Cache-Control", "no-store");
+  if (stream.status === "starting") {
+    res.setHeader("Retry-After", "1");
+    res.status(202).json({ status: "starting", message: `Avvio video: tentativo ${stream.attempt}/${stream.attempts}…` });
+    return;
   }
-
-  preferredLiveSources.delete(camera.id);
+  if (stream.status === "ready" && stream.filePath) {
+    res.setHeader("Content-Type", filename.endsWith(".m3u8") ? "application/vnd.apple.mpegurl" : "video/mp2t");
+    res.sendFile(stream.filePath);
+    return;
+  }
+  if (stream.status === "missing") {
+    res.status(404).json({ error: "Segmento video non più disponibile" });
+    return;
+  }
   res.status(503).json({
-    error: "Stream non disponibile. Verifica RTSP, credenziali e codec H.264 del sub-stream.",
-    detail: errors.filter(Boolean).join(" | ").slice(-1000),
+    error: "Non è stato possibile avviare il video RTSP. Apri i dettagli o consulta il registro dell’add-on.",
+    detail: stream.detail,
   });
 });
 

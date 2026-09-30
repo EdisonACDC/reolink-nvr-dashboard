@@ -1,3 +1,11 @@
+# 2.0.0-beta.8
+
+- Avvio live condiviso tra richieste: nessuna interruzione prematura dopo 8 secondi.
+- Fino a 25 secondi per tentativo, timeout RTSP di 15 secondi e fallback da TCP a UDP.
+- Avanzamento visibile senza lasciare richieste HTTP lunghe aperte attraverso Home Assistant.
+- Directory separate per ogni tentativo; le richieste dei segmenti non riavviano il flusso.
+- Dettagli tecnici richiudibili per mantenere visibile il pulsante Riprova sul telefono.
+
 # 2.0.0-beta.7
 
 - Corretto il timeout RTSP di FFmpeg per video live, registrazioni e istantanee: eliminato l’errore «Option rw_timeout not found».
