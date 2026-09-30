@@ -47,6 +47,10 @@ export function VideoPlayer({
       setLoading(false);
     }, 120_000);
 
+    const startRecordingAtBeginning = () => {
+      if (src.includes("/recordings/stream/")) video.currentTime = 0;
+    };
+    video.addEventListener("loadedmetadata", startRecordingAtBeginning, { once: true });
     const markReady = () => {
       if (disposed || controller.signal.aborted) return;
       window.clearTimeout(startupTimer);
@@ -105,6 +109,7 @@ export function VideoPlayer({
         ) {
           hls = new Hls({
             enableWorker: true,
+            startPosition: src.includes("/recordings/stream/") ? 0 : -1,
             lowLatencyMode: false,
             manifestLoadingMaxRetry: 4,
             manifestLoadingRetryDelay: 1000,
@@ -162,7 +167,7 @@ export function VideoPlayer({
       disposed = true;
       controller.abort();
       window.clearTimeout(startupTimer);
-      video.removeEventListener("loadedmetadata", markReady);
+      video.removeEventListener("loadedmetadata", startRecordingAtBeginning);
       video.removeEventListener("canplay", markReady);
       video.removeEventListener("error", markError);
       if (hls) hls.destroy();
@@ -212,3 +217,4 @@ export function VideoPlayer({
     </div>
   );
 }
+

@@ -8,6 +8,7 @@ import {
   listRecordedFiles,
   listStorageLocations,
   recorderCameraError,
+  recorderCameraStatus,
   recordingFilePath,
   updateStorageConfig,
 } from "../lib/nvr-recorder";
@@ -31,7 +32,8 @@ import {
   GetRecordingsResponse,
 } from "@workspace/api-zod";
 
-import { reolinkLogin } from "../lib/reolink-login";
+import { pollRecordingPlayback } from "../lib/recording-playback";
+import { reolinkLogin, type ReolinkLoginResult } from "../lib/reolink-login";
 
 const router: IRouter = Router();
 
@@ -79,6 +81,7 @@ function cameraResponse(camera: ReturnType<typeof jsonStore.getCameraById>) {
     name: camera.name,
     status: (camera.status || "unknown") as "online" | "offline" | "unknown",
     recordingEnabled: camera.recordingEnabled,
+    recordingStatus: recorderCameraStatus(camera.id),
     motionDetection: camera.motionDetection,
     resolution: camera.resolution ?? undefined,
     nvrId: camera.nvrId,
@@ -104,26 +107,37 @@ function cameraResponse(camera: ReturnType<typeof jsonStore.getCameraById>) {
  */
 function autoSyncCameras(
   config: { id: number; channelCount: number; nvrId?: number },
-  online: boolean,
+  result: ReolinkLoginResult,
 ): void {
   const existing = jsonStore.getCameras(config.id);
-  const count = Math.max(1, config.channelCount || 4);
-  const status = online ? "online" : "offline";
-  for (let ch = 1; ch <= count; ch++) {
-    const cam = existing.find((c) => c.channel === ch);
-    if (!cam) {
-      jsonStore.createCamera({
-        nvrId: config.id,
-        channel: ch,
-        name: `Camera CH${ch}`,
-        status,
-        recordingEnabled: true,
-        motionDetection: true,
-        resolution: null,
+  if (result.rtspPort) jsonStore.updateNvrConfig(config.id, { rtspPort: result.rtspPort });
+  if (result.channels) {
+    for (const discovered of result.channels) {
+      const ch = discovered.channel + 1;
+      const cam = existing.find(c => c.channel === ch && c.sourceType !== "standalone" && !c.rtspUrl);
+      const fields = { nvrOnline: discovered.online, status: discovered.online ? "online" : "offline",
+        mainRtspPath: discovered.mainPath, subRtspPath: discovered.subPath };
+      if (cam) jsonStore.updateCamera(cam.id, fields);
+      else if (discovered.online) jsonStore.createCamera({
+        nvrId: config.id, channel: ch, name: discovered.name || `Camera CH${ch}`,
+        ...fields, sourceType: "reolink_nvr", recordingEnabled: true, motionDetection: true, resolution: null,
       });
-    } else {
-      jsonStore.updateCamera(cam.id, { status });
     }
+    for (const cam of existing) {
+      if (cam.sourceType !== "standalone" && !cam.rtspUrl && !result.channels.some(ch => ch.channel + 1 === cam.channel))
+        jsonStore.updateCamera(cam.id, { nvrOnline: false, status: "offline" });
+    }
+    return;
+  }
+  // Older devices without discovery still retain the configured channels.
+  const count = Math.max(1, config.channelCount || 4);
+  for (let ch = 1; ch <= count; ch++) {
+    const cam = existing.find(c => c.channel === ch);
+    if (!cam && result.online) jsonStore.createCamera({
+      nvrId: config.id, channel: ch, name: `Camera CH${ch}`,
+      status: "unknown", recordingEnabled: true, motionDetection: true, resolution: null,
+    });
+    // An API login is not proof that a camera is sending video.
   }
 }
 
@@ -134,8 +148,8 @@ setInterval(async () => {
   try {
     const config = jsonStore.getNvrConfig();
     if (!config || !config.host || !config.configured) return;
-    const { online } = await reolinkLogin(config.host, config.port, config.username, config.password);
-    autoSyncCameras(config, online);
+    const result = await reolinkLogin(config.host, config.port, config.username, config.password);
+    autoSyncCameras(config, result);
   } catch {
     // ignore
   }
@@ -250,7 +264,7 @@ router.put("/nvr/config", (req, res): void => {
   // Non-blocking: attempt Reolink login and auto-create/update camera records
   const pwd = parsed.data.password ?? existing.password ?? "";
   reolinkLogin(updated.host, updated.port, updated.username, pwd)
-    .then(({ online }) => autoSyncCameras(updated, online))
+    .then(result => autoSyncCameras(updated, result))
     .catch(() => {});
 });
 
@@ -420,8 +434,7 @@ router.get("/nvr/cameras/:id/snapshot/image", async (req, res): Promise<void> =>
   }
 });
 
-// RTSP non è riproducibile dai browser. ffmpeg mantiene il codec video del
-// sub-stream e lo impacchetta in HLS, evitando una transcodifica pesante.
+// Il sub-stream viene normalizzato in H.264/HLS per i lettori mobili.
 router.get("/stream/camera/:channel/:filename", async (req, res): Promise<void> => {
   const config = getOrCreateNvrConfig();
   const rawChannel = Array.isArray(req.params.channel) ? req.params.channel[0] : req.params.channel;
@@ -432,6 +445,10 @@ router.get("/stream/camera/:channel/:filename", async (req, res): Promise<void> 
 
   if (!camera || !/^(index\.m3u8|segment-\d{6}\.ts)$/.test(filename)) {
     res.status(400).json({ error: "Canale o file HLS non valido" });
+    return;
+  }
+  if (camera.nvrOnline === false && camera.sourceType !== "standalone" && !camera.rtspUrl) {
+    res.status(503).json({ error: "Nessuna telecamera collegata a questo canale NVR. Premi Sincronizza nelle impostazioni dopo averla collegata." });
     return;
   }
   const sources = cameraRtspUrls(camera, config, "sub");
@@ -514,15 +531,40 @@ router.post("/nvr/sync", async (req, res): Promise<void> => {
     });
     return;
   }
-  const { online, reason } = await reolinkLogin(
+  const result = await reolinkLogin(
     config.host,
     config.port,
     config.username,
     config.password,
   );
-  autoSyncCameras(config, online);
+  const { online, reason } = result;
+  autoSyncCameras(config, result);
   logger.info({ host: config.host, port: config.port, online, reason }, "nvr/sync eseguito");
-  res.json({ success: true, online, reason, camerasCount: config.channelCount });
+  res.json({ success: true, online, reason, camerasCount: result.channels?.filter(channel => channel.online).length ?? config.channelCount });
+});
+
+router.get("/recordings/stream/:cameraId/:recording/:filename", (req, res): void => {
+  const cameraId = Number(req.params.cameraId);
+  const recording = String(req.params.recording);
+  const filename = String(req.params.filename);
+  if (!Number.isInteger(cameraId) || cameraId < 1 || !/^(index\.m3u8|segment-\d{6}\.ts)$/.test(filename)) {
+    res.status(400).json({ error: "Filmato non valido" }); return;
+  }
+  const input = recordingFilePath(cameraId, recording);
+  if (!input) { res.status(404).json({ error: "Registrazione non trovata o ancora in scrittura" }); return; }
+  const result = pollRecordingPlayback(input, filename);
+  res.setHeader("Cache-Control", "no-store");
+  if (result.status === "ready" && result.filePath) {
+    res.type(filename.endsWith(".m3u8") ? "application/vnd.apple.mpegurl" : "video/mp2t");
+    res.sendFile(result.filePath); return;
+  }
+  if (result.status === "starting") {
+    res.setHeader("Retry-After", "1");
+    res.status(202).json({ message: "Preparazione filmato compatibile…" }); return;
+  }
+  res.status(result.status === "missing" ? 404 : 503).json({
+    error: result.status === "busy" ? "Due filmati sono già in preparazione. Riprova tra poco." : "Impossibile riprodurre il filmato. Puoi scaricare l’originale.",
+  });
 });
 
 router.get("/recordings/play/:cameraId", (req, res): void => {
@@ -534,11 +576,12 @@ router.get("/recordings/play/:cameraId", (req, res): void => {
   res.sendFile(filePath);
 });
 
-router.get("/recordings", (req, res): void => {
+router.get("/recordings", async (req, res): Promise<void> => {
   const queryParsed = GetRecordingsQueryParams.safeParse(req.query);
   if (!queryParsed.success) { res.status(400).json({ error: queryParsed.error.message }); return; }
   const { cameraId, date } = queryParsed.data;
-  res.json(GetRecordingsResponse.parse(listRecordedFiles(cameraId, date)));
+  res.json(GetRecordingsResponse.parse(await listRecordedFiles(cameraId, date)));
 });
 
 export default router;
+

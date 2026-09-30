@@ -82,10 +82,12 @@ function startStream(
     "-fflags", "+genpts+discardcorrupt",
     "-use_wallclock_as_timestamps", "1",
     "-avoid_negative_ts", "make_zero",
-    "-i", rtspUrl(config, channel),
+    "-threads", "2", "-i", rtspUrl(config, channel),
     "-map", "0:v:0",
     "-an",
-    "-c:v", "copy",
+    "-c:v", "libx264", "-preset", "ultrafast", "-tune", "zerolatency",
+    "-vf", "scale=w=\'min(1280,iw)\':h=-2,fps=15,format=yuv420p",
+    "-threads", "2", "-crf", "25", "-g", "15", "-keyint_min", "15", "-sc_threshold", "0",
     "-f", "hls",
     "-hls_time", "1",
     "-hls_list_size", "5",
@@ -292,3 +294,4 @@ function stopAllStreams(): void {
 
 process.once("SIGTERM", stopAllStreams);
 process.once("SIGINT", stopAllStreams);
+

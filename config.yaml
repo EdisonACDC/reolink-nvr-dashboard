@@ -1,6 +1,6 @@
 name: "Reolink NVR Dashboard"
 description: "NVR autonomo per telecamere RTSP/ONVIF con registrazione protetta"
-version: "2.0.0-beta.8"
+version: "2.0.0-beta.9"
 slug: "reolink_nvr2"
 init: false
 arch:
@@ -21,3 +21,4 @@ map:
     read_only: false
   - type: share
     read_only: false
+

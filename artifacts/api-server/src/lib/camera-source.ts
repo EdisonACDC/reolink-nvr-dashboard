@@ -50,12 +50,13 @@ export function cameraRtspUrls(
   const channel = String(camera.channel).padStart(2, "0");
   const prefix = `rtsp://${username}:${password}@${cleanHost(config.host)}:${config.rtspPort}`;
 
-  // Gli NVR Reolink recenti usano Preview_XX_sub; diversi modelli meno
-  // recenti espongono invece h264Preview_XX_sub. Manteniamo entrambi.
-  return [
-    `${prefix}/Preview_${channel}_${quality}`,
+  // Manteniamo entrambi i percorsi Reolink, per flussi principali e secondari.
+  const advertised = quality === "main" ? camera.mainRtspPath : camera.subRtspPath;
+  return [...new Set([
+    ...(advertised?.startsWith("/") ? [`${prefix}${advertised}`] : []),
     `${prefix}/h264Preview_${channel}_${quality}`,
-  ];
+    `${prefix}/Preview_${channel}_${quality}`,
+  ])];
 }
 
 export function publicRtspUrl(rawUrl?: string): string {
@@ -69,3 +70,4 @@ export function publicRtspUrl(rawUrl?: string): string {
     return rawUrl.replace(/rtsp:\/\/[^@\s]+@/gi, "rtsp://");
   }
 }
+

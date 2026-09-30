@@ -77,6 +77,7 @@ type NvrCamera = Camera & {
   recordingMode?: "continuous" | "motion" | "off"
   retentionDays?: number | null
   lastError?: string
+  recordingStatus?: string
 }
 
 type StorageStatus = {
@@ -530,7 +531,7 @@ export default function Settings() {
                     </div>
 
                     <div className="rounded-lg bg-muted/20 border border-border/50 p-4 text-sm">
-                      <div>Processi di registrazione attivi: <strong>{storage.recordingProcesses}</strong></div>
+                      <div>Telecamere che stanno registrando: <strong>{storage.recordingProcesses}</strong></div>
                       <div>Spazio ancora utilizzabile: <strong>{formatBytes(storage.availableForRecordingsBytes)}</strong></div>
                       <div>Autonomia stimata: <strong>{storage.estimatedDays === null ? "in calcolo dopo le prime registrazioni" : `${storage.estimatedDays} giorni`}</strong></div>
                     </div>
@@ -576,9 +577,9 @@ export default function Settings() {
                   cameras.map(cam => (
                     <div key={cam.id} className="grid grid-cols-12 gap-4 p-4 items-center border-b border-border/10 last:border-0 hover:bg-secondary/30 transition-colors group">
                       <div className="col-span-1 text-center font-mono text-muted-foreground">{cam.channel}</div>
-                      <div className="col-span-4 font-medium">{cam.name}</div>
+                      <div className="col-span-4 font-medium">{cam.name}{(cam as NvrCamera).lastError && <details className="text-xs text-destructive break-all mt-1"><summary>Errore registrazione</summary>{(cam as NvrCamera).lastError}</details>}</div>
                       <div className="col-span-3 flex gap-2">
-                        {cam.recordingEnabled && <span className="text-[10px] bg-primary/10 text-primary px-2 py-0.5 rounded border border-primary/20">REC</span>}
+                        {cam.recordingEnabled && <span className="text-[10px] bg-primary/10 text-primary px-2 py-0.5 rounded border border-primary/20">{(cam as NvrCamera).recordingStatus === "recording" ? "REC attiva" : (cam as NvrCamera).recordingStatus === "error" ? "REC errore" : "REC in attesa"}</span>}
                         {cam.motionDetection && <span className="text-[10px] bg-warning/10 text-warning px-2 py-0.5 rounded border border-warning/20">MOTION</span>}
                       </div>
                       <div className="col-span-2">
@@ -729,3 +730,4 @@ export default function Settings() {
     </div>
   )
 }
+

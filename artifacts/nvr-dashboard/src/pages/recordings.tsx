@@ -11,6 +11,14 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/u
 import { VideoPlayer } from "@/components/video-player"
 import { Skeleton } from "@/components/ui/skeleton"
 
+// Keep download pointed at the untouched original; use HLS for viewing.
+function compatiblePlaybackUrl(url?: string): string | undefined {
+  if (!url) return url;
+  const match = url.match(/^(.*)\/recordings\/play\/(\d+)\?file=([^&]+)/);
+  if (!match) return url;
+  return `${match[1]}/recordings/stream/${match[2]}/${encodeURIComponent(decodeURIComponent(match[3]))}/index.m3u8`;
+}
+
 export default function Recordings() {
   const [date, setDate] = useState<Date>(new Date())
   const [cameraId, setCameraId] = useState<string>("all")
@@ -124,7 +132,7 @@ export default function Recordings() {
                   <div className="col-span-2 text-sm text-muted-foreground">
                     {formatDuration(rec.duration)} <span className="opacity-50 text-xs ml-1">({formatFileSize(rec.fileSize)})</span>
                   </div>
-                  <div className="col-span-2 flex justify-end gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
+                  <div className="col-span-2 flex justify-end gap-2 opacity-100">
                     <Button size="icon" variant="ghost" className="h-8 w-8 text-primary hover:bg-primary/20" onClick={() => setSelectedVideo(rec)}>
                       <Play className="w-4 h-4" />
                     </Button>
@@ -153,7 +161,7 @@ export default function Recordings() {
           <div className="aspect-video w-full bg-black relative">
             {selectedVideo && (
               <VideoPlayer 
-                src={selectedVideo.playbackUrl} 
+                src={compatiblePlaybackUrl(selectedVideo.playbackUrl)}
                 controls 
                 autoPlay 
                 className="w-full h-full"
@@ -165,3 +173,4 @@ export default function Recordings() {
     </div>
   )
 }
+

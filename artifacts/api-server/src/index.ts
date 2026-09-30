@@ -1,4 +1,5 @@
 import app from "./app";
+import { shutdownRecorders } from "./lib/nvr-recorder";
 import { logger } from "./lib/logger";
 
 const rawPort = process.env["PORT"];
@@ -26,9 +27,11 @@ const server = app.listen(port, (err) => {
 
 function shutdown(signal: string): void {
   logger.info({ signal }, "Arresto server NVR");
-  server.close(() => process.exit(0));
+  void Promise.all([new Promise<void>(resolve => server.close(() => resolve())), shutdownRecorders()])
+    .then(() => process.exit(0));
   setTimeout(() => process.exit(1), 10_000).unref();
 }
 
 process.once("SIGTERM", () => shutdown("SIGTERM"));
 process.once("SIGINT", () => shutdown("SIGINT"));
+
